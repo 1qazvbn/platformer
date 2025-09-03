@@ -1,4 +1,4 @@
-const GAME_VERSION = "0.0.4";
+const GAME_VERSION = self.GAME_VERSION || '0.0.0';
 
 function asArray(v){ return Array.isArray(v)?v:[]; }
 
