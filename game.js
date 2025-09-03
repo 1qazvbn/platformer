@@ -1,4 +1,4 @@
-const GAME_VERSION = "1.0.0";
+const GAME_VERSION = "0.0.4";
 
 function asArray(v){ return Array.isArray(v)?v:[]; }
 
@@ -9,7 +9,7 @@ let score = 0;
 
 const keys = {left:false,right:false,up:false};
 
-const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0,shake:0} };
+const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0,shake:0,shakeTime:0} };
 
 function showError(err){
   const o = document.getElementById('error-overlay');
@@ -65,16 +65,16 @@ function init(){
   // Level
   world.platforms = asArray([
     {x:-400,y:300,w:1200,h:40},
-    {x:200,y:200,w:120,h:20},
-    {x:400,y:150,w:120,h:20},
-    {x:650,y:250,w:150,h:20},
-    {x:900,y:180,w:120,h:20}
+    {x:200,y:220,w:120,h:20},
+    {x:350,y:150,w:120,h:20},
+    {x:520,y:250,w:150,h:20},
+    {x:710,y:180,w:120,h:20}
   ]);
   world.coins = asArray([
-    {x:230,y:170,t:0,collected:false},
-    {x:430,y:120,t:0,collected:false},
-    {x:700,y:220,t:0,collected:false},
-    {x:930,y:150,t:0,collected:false}
+    {x:230,y:190,t:0,collected:false},
+    {x:410,y:120,t:0,collected:false},
+    {x:595,y:220,t:0,collected:false},
+    {x:770,y:150,t:0,collected:false}
   ]);
 
   world.player = {
@@ -84,9 +84,9 @@ function init(){
   };
 }
 
-const GRAVITY = 0.6;
+const GRAVITY = 1.2;
 const MOVE_SPEED = 6.0;
-const JUMP_VELOCITY = -14;
+const JUMP_VELOCITY = -35;
 const COYOTE_MS = 100;
 const JUMP_BUFFER_MS = 120;
 const FRICTION = 0.85;
@@ -124,7 +124,7 @@ function update(dt){
     p.scaleY=0.9; p.scaleX=1.1;
   }
 
-  if(!keys.up && p.vy<0) p.vy *= 0.5; // variable jump
+  if(!keys.up && p.vy<0) p.vy *= 0.4; // variable jump
 
   p.vy += GRAVITY;
   // limit speeds
@@ -147,11 +147,11 @@ function moveAndCollide(p, dt){
   let landed=false;
   for(const pl of world.platforms){
     if(rectIntersect(p,pl)){
-      if(p.vy>0){ p.y = pl.y - p.h; p.vy=0; p.onGround=true; p.coyote=COYOTE_MS; landed=true; world.camera.shake=5; }
+      if(p.vy>0){ p.y = pl.y - p.h; p.vy=0; p.onGround=true; p.coyote=COYOTE_MS; landed=true; world.camera.shakeTime=200; }
       else if(p.vy<0){ p.y = pl.y + pl.h; p.vy=0; }
     }
   }
-  if(!landed && p.onGround){ p.onGround=false; p.coyote=COYOTE_MS; }
+  if(!landed && p.onGround){ p.onGround=false; p.coyote=COYOTE_MS; world.camera.shakeTime=0; }
 
   // ease scale back
   p.scaleX += (1 - p.scaleX)*0.1;
@@ -163,7 +163,7 @@ function updateCoins(dt){
     c.t += dt;
     if(!c.collected){
       if(rectIntersect({x:world.player.x,y:world.player.y,w:world.player.w,h:world.player.h}, {x:c.x-10,y:c.y-10,w:20,h:20})){
-        c.collected=true; score++; world.camera.shake=5;
+        c.collected=true; score++; world.camera.shakeTime=200;
       }
     }
   }
@@ -175,7 +175,13 @@ function updateCamera(dt){
   const targetY = p.y + p.h/2 - canvas.height/2;
   world.camera.x += (targetX - world.camera.x)*0.1;
   world.camera.y += (targetY - world.camera.y)*0.1;
-  world.camera.shake *= 0.9;
+  if(p.onGround){
+    world.camera.shakeTime -= dt*1000;
+    if(world.camera.shakeTime < 0) world.camera.shakeTime = 0;
+  }else{
+    world.camera.shakeTime = 0;
+  }
+  world.camera.shake = world.camera.shakeTime > 0 ? 5 * (world.camera.shakeTime/200) : 0;
 }
 
 function rectIntersect(a,b){
