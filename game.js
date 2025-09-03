@@ -25,6 +25,8 @@ function start(){
   ctx = canvas.getContext('2d');
   resize();
   drawLoading();
+  const l=document.getElementById('loading-screen');
+  if(l) l.remove();
   try{
     init();
     last = performance.now();
