@@ -1,9 +1,10 @@
 <!doctype html><html><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Platformer • v1.0.0</title>
+<title>Platformer</title>
 <script src="version.js"></script>
 <script>
 (function(){
+  document.title = `Platformer — v${self.GAME_VERSION}`;
   const addVersion = u => self.GAME_VERSION ? `${u}?v=${self.GAME_VERSION}` : u;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
