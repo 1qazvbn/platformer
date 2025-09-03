@@ -1,9 +1,26 @@
 <!doctype html><html><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Platformer • v1.0.0</title>
-<link rel="stylesheet" href="styles.css?v=1">
+<script src="version.js"></script>
+<script>
+(function(){
+  const addVersion = u => self.GAME_VERSION ? `${u}?v=${self.GAME_VERSION}` : u;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = addVersion('styles.css');
+  document.head.appendChild(link);
+  const script = document.createElement('script');
+  script.src = addVersion('game.js');
+  script.defer = true;
+  document.head.appendChild(script);
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register(addVersion('sw.js')).then(()=>{
+      navigator.serviceWorker.addEventListener('controllerchange', ()=>location.reload());
+    });
+  }
+})();
+</script>
 </head><body>
 <canvas id="game"></canvas>
 <div id="error-overlay" style="display:none"></div>
-<script src="game.js?v=1" defer></script>
 </body></html>
