@@ -5,6 +5,7 @@ function asArray(v){ return Array.isArray(v)?v:[]; }
 
 let canvas, ctx, dpr=1, pageScale=1, eff=1, viewWidth=0, viewHeight=0, last=0, acc=0, fps=60, fpsTime=0, frameCount=0;
 const dt = 1/60;
+const tileSize = 60;
 let safeMode = false;
 let score = 0;
 let isReady = false;
@@ -347,9 +348,12 @@ function init(){
   document.addEventListener('visibilitychange',()=>{ if(document.hidden){ resetInput(true); lastInputEvent='vis'; } });
   ['touchend','touchcancel','touchleave'].forEach(ev=>window.addEventListener(ev,()=>{ resetInput(true); lastInputEvent=ev; }));
 
+  const groundDeltaY = 4 * tileSize;
+  const groundY = 300 + groundDeltaY;
+
   // Level
   world.platforms = asArray([
-    {x:-400,y:300,w:1200,h:40},
+    {x:-400,y:groundY,w:1200,h:40},
     {x:200,y:220,w:120,h:20},
     {x:350,y:150,w:120,h:20},
     {x:520,y:250,w:150,h:20},
@@ -363,7 +367,7 @@ function init(){
   ]);
 
   world.player = {
-    x:0,y:0,w:40,h:40,vx:0,vy:0,onGround:false,
+    x:0,y:groundY-40,w:40,h:40,vx:0,vy:0,onGround:false,
     coyote:0,jumpBuffer:0,
     scaleX:1,scaleY:1,
     eye:1,blinkTimer:randomBlinkInterval(),blinkDuration:0,blinkRepeat:false,
@@ -859,6 +863,7 @@ function drawHUD(camX, camY){
     ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | DPR: ${dpr.toFixed(2)} | Zoom: ${pageScale.toFixed(2)} | eff: ${eff.toFixed(2)} | ${gridDrawnPrev?'drawn':'not'}`,20,130);
     ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
   }
+  ctx.fillText('Ground ΔY: +4 tiles',20,segment.done?210:170);
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
     const dbgY = segment.done?230:190;
