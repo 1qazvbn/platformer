@@ -17,6 +17,16 @@ function randomBlinkInterval(){
     : 3000 + Math.random()*2250;
 }
 
+function randomYawnInterval(){
+  return Math.random() < 0.5
+    ? 6000 + Math.random()*3000
+    : 10000 + Math.random()*5000;
+}
+
+function randomYawnCooldown(){
+  return 10000 + Math.random()*5000;
+}
+
 const keys = {left:false,right:false,up:false};
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
@@ -95,7 +105,13 @@ function init(){
   world.player = {
     x:0,y:0,w:40,h:40,vx:0,vy:0,onGround:false,
     coyote:0,jumpBuffer:0,
-    scaleX:1,scaleY:1,blink:1,blinkTimer:randomBlinkInterval(),blinkDuration:0,blinkRepeat:false,breathe:0,dir:1
+    scaleX:1,scaleY:1,
+    eye:1,blinkTimer:randomBlinkInterval(),blinkDuration:0,blinkRepeat:false,
+    mouth:0,
+    yawnTimer:randomYawnInterval(),yawnCooldown:0,
+    yawning:false,yawnPhase:0,yawnTime:0,yawnDurA:0,yawnDurP:0,yawnDurC:0,
+    yawnStretch:0,yawnTilt:0,longBlink:false,
+    breathe:0,dir:1
   };
 }
 
@@ -130,24 +146,47 @@ function loop(t){
 function update(dt){
   const p = world.player;
   p.breathe += dt*2;
-  p.blinkTimer -= dt*1000;
-  if(p.blinkTimer<=0 && p.blinkDuration<=0){
-    p.blink = 0;
-    p.blinkDuration = 120 + Math.random()*60;
-    if(p.blinkRepeat){
-      p.blinkRepeat = false;
+
+  if(p.yawning && (!p.onGround || keys.left || keys.right || keys.up)){
+    cancelYawn(p);
+  }
+
+  if(p.yawning){
+    updateYawn(p, dt);
+  }else{
+    if(p.yawnCooldown>0){
+      p.yawnCooldown -= dt*1000;
     }else{
-      p.blinkRepeat = Math.random() < 0.1;
+      const idle = p.onGround && Math.abs(p.vx) < 0.05 && Math.abs(p.vy) < 0.05 && !keys.left && !keys.right && !keys.up;
+      if(idle){
+        p.yawnTimer -= dt*1000;
+        if(p.yawnTimer<=0) startYawn(p);
+      }else{
+        p.yawnTimer = randomYawnInterval();
+      }
     }
   }
-  if(p.blinkDuration>0){
-    p.blinkDuration -= dt*1000;
-    if(p.blinkDuration<=0){
-      p.blink = 1;
+
+  if(!p.yawning){
+    p.blinkTimer -= dt*1000;
+    if(p.blinkTimer<=0 && p.blinkDuration<=0){
+      p.eye = 0;
+      p.blinkDuration = 120 + Math.random()*60;
       if(p.blinkRepeat){
-        p.blinkTimer = 60 + Math.random()*40;
+        p.blinkRepeat = false;
       }else{
-        p.blinkTimer = randomBlinkInterval();
+        p.blinkRepeat = Math.random() < 0.1;
+      }
+    }
+    if(p.blinkDuration>0){
+      p.blinkDuration -= dt*1000;
+      if(p.blinkDuration<=0){
+        p.eye = 1;
+        if(p.blinkRepeat){
+          p.blinkTimer = 60 + Math.random()*40;
+        }else{
+          p.blinkTimer = randomBlinkInterval();
+        }
       }
     }
   }
@@ -179,6 +218,74 @@ function update(dt){
   moveAndCollide(p, dt);
   updateCoins(dt);
   updateCamera(dt);
+}
+
+function startYawn(p){
+  const s = safeMode ? 0.7 : 1;
+  p.yawning = true;
+  p.yawnPhase = 'a';
+  p.yawnTime = 0;
+  p.yawnDurA = (150 + Math.random()*100)*s;
+  p.yawnDurP = (600 + Math.random()*300)*s;
+  p.yawnDurC = (300 + Math.random()*200)*s;
+  p.yawnStretch = 0;
+  p.yawnTilt = 0;
+  p.mouth = 0;
+  p.eye = 0.6;
+  p.longBlink = false;
+}
+
+function cancelYawn(p){
+  p.yawning=false;
+  p.yawnStretch=0;
+  p.yawnTilt=0;
+  p.mouth=0;
+  p.eye=1;
+  p.longBlink=false;
+  p.yawnCooldown = randomYawnCooldown();
+  p.yawnTimer = randomYawnInterval();
+}
+
+function endYawn(p){
+  p.yawning=false;
+  p.yawnStretch=0;
+  p.yawnTilt=0;
+  p.mouth=0;
+  p.eye=1;
+  p.longBlink=false;
+  p.yawnCooldown = randomYawnCooldown();
+  p.yawnTimer = randomYawnInterval();
+}
+
+function updateYawn(p, dt){
+  const amp = 0.1 * (safeMode ? 0.7 : 1);
+  p.yawnTime += dt*1000;
+  if(p.yawnPhase==='a'){
+    const t = Math.min(1, p.yawnTime/p.yawnDurA);
+    p.yawnStretch = amp * t;
+    if(p.yawnTime >= p.yawnDurA){
+      p.yawnPhase='p';
+      p.yawnTime=0;
+      p.mouth = 1;
+      p.yawnStretch = amp;
+      p.yawnTilt = -0.1 * (safeMode ? 0.7 : 1);
+      if(Math.random()<0.2){ p.longBlink=true; p.eye=0; } else { p.eye=1; }
+    }
+  }else if(p.yawnPhase==='p'){
+    if(p.yawnTime >= p.yawnDurP){
+      p.yawnPhase='c';
+      p.yawnTime=0;
+      if(p.longBlink){ p.eye=1; p.longBlink=false; }
+    }
+  }else if(p.yawnPhase==='c'){
+    const t = Math.min(1, p.yawnTime/p.yawnDurC);
+    p.yawnStretch = amp + ((-amp*0.3) - amp)*t;
+    p.mouth = 1 - t;
+    p.yawnTilt = -0.1 * (safeMode ? 0.7 : 1) * (1 - t);
+    if(p.yawnTime >= p.yawnDurC){
+      endYawn(p);
+    }
+  }
 }
 
 function moveAndCollide(p, dt){
@@ -328,7 +435,8 @@ function drawPlayer(){
   ctx.save();
   ctx.translate(p.x+p.w/2, p.y+p.h/2);
   const breathe = 1 + Math.sin(p.breathe)*0.02;
-  ctx.scale(p.scaleX*breathe, p.scaleY/breathe);
+  ctx.scale(p.scaleX*breathe, p.scaleY/breathe*(1+p.yawnStretch));
+  ctx.rotate(p.yawnTilt);
   ctx.beginPath();
   ctx.fillStyle = '#76e3a6';
   ctx.strokeStyle = '#000';
@@ -343,18 +451,30 @@ function drawPlayer(){
   ctx.fillStyle = '#000';
   const eyeY = -p.h*0.1;
   const eyeOffset = p.dir*4;
-  if(p.blink){
-    ctx.beginPath(); ctx.arc(-8+eyeOffset,eyeY,4,0,Math.PI*2); ctx.arc(8+eyeOffset,eyeY,4,0,Math.PI*2); ctx.fill();
-  }else{
-    ctx.fillRect(-10+eyeOffset,eyeY-1,6,2);
-    ctx.fillRect(4+eyeOffset,eyeY-1,6,2);
-  }
+  const drawEye=open=>{
+    if(open>=1){
+      ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill();
+    }else if(open<=0){
+      ctx.fillRect(-3,-1,6,2);
+    }else{
+      ctx.save(); ctx.scale(1,open); ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fill(); ctx.restore();
+    }
+  };
+  ctx.save(); ctx.translate(-8+eyeOffset,eyeY); drawEye(p.eye); ctx.restore();
+  ctx.save(); ctx.translate(8+eyeOffset,eyeY); drawEye(p.eye); ctx.restore();
   // mouth
-  ctx.beginPath();
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = 2;
-  ctx.moveTo(-8,8); ctx.quadraticCurveTo(0,12,8,8);
-  ctx.stroke();
+  if(p.mouth>0){
+    ctx.beginPath();
+    ctx.fillStyle = '#000';
+    ctx.ellipse(0,8,8*p.mouth,12*p.mouth,0,0,Math.PI*2);
+    ctx.fill();
+  }else{
+    ctx.beginPath();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.moveTo(-8,8); ctx.quadraticCurveTo(0,12,8,8);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
