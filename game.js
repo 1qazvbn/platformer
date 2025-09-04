@@ -1057,12 +1057,11 @@ function getGroundY(p){
 
 function drawHUD(camX, camY){
   ctx.save();
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = '#111';
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 1;
   ctx.font = '14px monospace';
   ctx.textBaseline = 'top';
-  ctx.shadowColor = 'rgba(0,0,0,0.5)';
-  ctx.shadowOffsetX = 1;
-  ctx.shadowOffsetY = 1;
   const p = world.player;
 
   const lines = [];
@@ -1122,13 +1121,18 @@ function drawHUD(camX, camY){
 
   let x = 20, y = 20;
   for(const line of lines){
+    ctx.strokeText(line, x, y);
     ctx.fillText(line, x, y);
     y += 18;
   }
 
-  ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
+  const ver = 'v'+GAME_VERSION;
+  ctx.strokeText(ver, viewWidth-80, viewHeight-20);
+  ctx.fillText(ver, viewWidth-80, viewHeight-20);
   if(inputHUD){
-    ctx.fillText(`L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${p.vx.toFixed(2)} last:${lastInputEvent}`,20,viewHeight-40);
+    const inputLine = `L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${p.vx.toFixed(2)} last:${lastInputEvent}`;
+    ctx.strokeText(inputLine,20,viewHeight-40);
+    ctx.fillText(inputLine,20,viewHeight-40);
   }
   ctx.restore();
 }
