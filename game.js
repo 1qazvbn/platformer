@@ -5,6 +5,7 @@ function asArray(v){ return Array.isArray(v)?v:[]; }
 
 const VIRTUAL_HEIGHT = 810;
 const tileSize = 60;
+const PLATFORM_HEIGHT = 20;
 
 const CLAMP_PLAYER_TO_CAMERA_X = true;
 
@@ -136,10 +137,12 @@ const lastGen = {seed:0,layers:0,stepX:0,stepY:0};
 
 // Simple platform generator settings
 const PLATFORM_GEN = {
-  totalSpanTilesX: 100,
+  mainBackwardTiles: 20,
+  mainForwardTiles: 300,
+  mainThicknessTiles: 1,
   platformLengthTiles: 3,
   minDx: 2,
-  allowedDeltaY: [1, 0, -1, -2],
+  spawnCount: 50,
   seed: null
 };
 
@@ -150,10 +153,9 @@ function maxReachX(dy){
 }
 
 function isReachable(dx, dy){
-  if(dy > 1) return false;
+  if(dy <= 0) return false;
   if(dy === 1) return dx <= 6;
-  if(dy === 0) return dx <= 6;
-  return dx <= maxReachX(dy);
+  return false;
 }
 
 function hasHeadClearance(x, y, w, clearanceTiles=2){
@@ -442,39 +444,40 @@ function generateLevel(seed, layers=4){
   const rnd = ()=>{ s = (s*1664525 + 1013904223)>>>0; return s/4294967296; };
 
   const tile = tileSize;
-  const h = 20;
+  const h = PLATFORM_GEN.mainThicknessTiles * PLATFORM_HEIGHT;
+  const w = PLATFORM_GEN.platformLengthTiles * tile;
   const baseGroundY = 300 + 4*tile;
   lastGen.layers = 1;
-  lastGen.stepX = PLATFORM_GEN.minDx * tile;
+  lastGen.stepX = tile;
   lastGen.stepY = tile;
 
   // reset world
   world.platforms = [];
   world.coins = [];
 
-  // starting platform
-  const w = PLATFORM_GEN.platformLengthTiles * tile;
-  const ground = {x:0, y:baseGroundY, w, h, level:0};
+  // main ground platform
+  const anchorX = 0;
+  const leftBound = anchorX - PLATFORM_GEN.mainBackwardTiles * tile;
+  const rightBound = anchorX + PLATFORM_GEN.mainForwardTiles * tile;
+  const ground = {x:leftBound, y:baseGroundY, w:rightBound - leftBound, h, level:0};
   world.platforms.push(ground);
-  world.coins.push({x:ground.x + ground.w/2, y:ground.y - 1.2*tile, t:0, collected:false});
+  world.coins.push({x:anchorX + w/2, y:ground.y - 1.2*tile, t:0, collected:false});
 
-  const startLeft = ground.x;
-  const maxSpanPx = PLATFORM_GEN.totalSpanTilesX * tile;
-  let last = ground;
+  let last = {x:anchorX, y:baseGroundY, w, h, level:0};
 
-  // sequential generation to the right
-  while(last.x + last.w - startLeft < maxSpanPx){
+  for(let spawned=0; spawned<PLATFORM_GEN.spawnCount; spawned++){
     let placed = false;
     for(let attempts=0; attempts<20 && !placed; attempts++){
-      const dy = PLATFORM_GEN.allowedDeltaY[Math.floor(rnd()*PLATFORM_GEN.allowedDeltaY.length)];
-      let maxDx = dy >= 0 ? 6 : Math.max(1, Math.min(maxReachX(dy), 10));
+      const maxDx = 6;
       const minDx = Math.min(PLATFORM_GEN.minDx, maxDx);
-      if(maxDx < minDx) continue;
       const dx = minDx + Math.floor(rnd()*(maxDx - minDx + 1));
-      if(!isReachable(dx, dy)) continue;
+      if(!isReachable(dx,1)) continue;
       const nx = last.x + last.w + dx*tile;
-      const ny = last.y - dy*tile;
+      if(nx + w > rightBound){ placed = false; break; }
+      const ny = last.y - tile;
       const pl = {x:nx, y:ny, w, h, level:0};
+      // bounds check
+      if(pl.x < leftBound || pl.x + pl.w > rightBound) continue;
       // collision check
       let overlap = false;
       for(const other of world.platforms){
@@ -484,8 +487,7 @@ function generateLevel(seed, layers=4){
         }
       }
       if(overlap) continue;
-      // head clearance at takeoff and landing
-      if(!hasHeadClearance(last.x, last.y, last.w)) continue;
+      if(!hasHeadClearance(last.x, last.y, last.w)) break;
       if(!hasHeadClearance(pl.x, pl.y, pl.w)) continue;
       world.platforms.push(pl);
       world.coins.push({x:pl.x + pl.w/2, y:pl.y - 1.2*tile, t:0, collected:false});
