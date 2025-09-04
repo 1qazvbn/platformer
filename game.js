@@ -31,6 +31,18 @@ const keys = {left:false,right:false,up:false};
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
 
+let vMax = 0;
+const segment = {start:-400,end:800,startTime:0,delta:0,running:false,done:false};
+let gameTime = 0;
+
+function resetSegment(){
+  vMax = 0;
+  segment.running=false;
+  segment.done=false;
+  segment.startTime=0;
+  segment.delta=0;
+}
+
 let started=false;
 function start(){
   if(started) return;
@@ -80,6 +92,7 @@ function init(){
     if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=true;
     if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=true;
     if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'){ keys.up=true; world.player.jumpBuffer=JUMP_BUFFER_MS; }
+    if(e.code==='KeyR'){ resetSegment(); }
   });
   window.addEventListener('keyup',e=>{
     if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=false;
@@ -116,11 +129,13 @@ function init(){
 }
 
 const GRAVITY = 1.2;
-const MOVE_SPEED = 6.0;
+const MAX_RUN_SPEED = 6.0 * 3.5; // allow up to ×4 if needed
+const RUN_ACCEL = 6.0 * 3.0;
+const AIR_ACCEL = 6.0; // keep air control
 const JUMP_VELOCITY = -35;
 const COYOTE_MS = 100;
 const JUMP_BUFFER_MS = 120;
-const FRICTION = 0.85;
+const RUN_DECEL = 0.7; // was 0.85 (×2 decel)
 
 function loop(t){
   try{
@@ -194,11 +209,14 @@ function update(dt){
   p.coyote-=dt*1000; if(p.coyote<0) p.coyote=0;
   p.jumpBuffer-=dt*1000; if(p.jumpBuffer<0) p.jumpBuffer=0;
 
+  gameTime += dt;
+
   // Input
-  if(keys.left) { p.vx -= MOVE_SPEED; p.dir=-1; }
-  if(keys.right){ p.vx += MOVE_SPEED; p.dir=1; }
+  const accel = p.onGround ? RUN_ACCEL : AIR_ACCEL;
+  if(keys.left) { p.vx -= accel; p.dir=-1; }
+  if(keys.right){ p.vx += accel; p.dir=1; }
   if(!keys.left && !keys.right && p.onGround){
-    p.vx*=FRICTION;
+    p.vx*=RUN_DECEL;
     if(Math.abs(p.vx) < 0.05) p.vx = 0;
   }
 
@@ -213,11 +231,25 @@ function update(dt){
 
   p.vy += GRAVITY;
   // limit speeds
-  p.vx = Math.max(Math.min(p.vx, MOVE_SPEED), -MOVE_SPEED);
+  p.vx = Math.max(Math.min(p.vx, MAX_RUN_SPEED), -MAX_RUN_SPEED);
 
+  const prevCenterX = p.x + p.w/2;
   moveAndCollide(p, dt);
   updateCoins(dt);
   updateCamera(dt);
+
+  const vInst = Math.abs(p.vx*10);
+  if(vInst > vMax) vMax = vInst;
+  const centerX = p.x + p.w/2;
+  if(!segment.running && prevCenterX < segment.start && centerX >= segment.start){
+    segment.running = true;
+    segment.startTime = gameTime;
+    segment.done = false;
+  }
+  if(segment.running && !segment.done && prevCenterX < segment.end && centerX >= segment.end){
+    segment.done = true;
+    segment.delta = gameTime - segment.startTime;
+  }
 }
 
 function startYawn(p){
@@ -324,7 +356,9 @@ function updateCoins(dt){
 
 function updateCamera(dt){
   const p = world.player;
-  const targetX = p.x + p.w/2 - viewWidth/2;
+  const vInst = p.vx*10;
+  const lookAhead = Math.min(Math.max(Math.abs(vInst)*0.18,80),220) * p.dir;
+  const targetX = p.x + p.w/2 - viewWidth/2 + lookAhead;
   const targetY = p.y + p.h/2 - viewHeight/2;
   world.camera.x += (targetX - world.camera.x)*0.15;
   world.camera.y += (targetY - world.camera.y)*0.15;
@@ -490,12 +524,22 @@ function drawHUD(camX, camY){
   ctx.fillStyle = '#fff';
   ctx.font = '16px sans-serif';
   ctx.fillText('Coins: '+score,20,30);
-  ctx.fillText('Arrows/A,D move • W/↑/Space jump',20,50);
+  ctx.fillText('Arrows/A,D move • W/↑/Space jump • R reset timer',20,50);
+  const p = world.player;
+  const vInst = p.vx*10;
+  const vTiles = vInst/60;
+  ctx.fillText(`v_inst: ${vInst.toFixed(1)}px/s (${vTiles.toFixed(2)}t/s)`,20,70);
+  ctx.fillText(`v_max: ${vMax.toFixed(1)}px/s`,20,90);
+  if(segment.done){
+    const vAvg = 1200/segment.delta;
+    const vAvgTiles = vAvg/60;
+    ctx.fillText(`Δt: ${segment.delta.toFixed(2)}s`,20,110);
+    ctx.fillText(`v_avg: ${vAvg.toFixed(1)}px/s (${vAvgTiles.toFixed(2)}t/s)`,20,130);
+  }
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
-    const p = world.player;
-    ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,70);
-    ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,90);
-    ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,110);
+    ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,150);
+    ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,170);
+    ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,190);
   }
 }
