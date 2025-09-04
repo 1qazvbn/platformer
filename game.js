@@ -3,19 +3,18 @@ if(self.BOOT) self.BOOT.script = true;
 
 function asArray(v){ return Array.isArray(v)?v:[]; }
 
-const VIRTUAL_WIDTH = 1440;
 const VIRTUAL_HEIGHT = 810;
 const tileSize = 60;
 
 const CLAMP_PLAYER_TO_CAMERA_X = true;
-const CAM_CLAMP_PAD = -50; // пиксели запаса от краёв экрана
 
 const PARALLAX_ENABLED = true;
 const parallax = { segments:{}, clouds:[] };
 
 let canvas, ctx;
 let dpr = 1, canvasScale = 1, offsetX = 0, offsetY = 0, eff = 1;
-let viewWidth = VIRTUAL_WIDTH, viewHeight = VIRTUAL_HEIGHT;
+let viewWidth = Math.round(VIRTUAL_HEIGHT * (self.innerWidth / self.innerHeight));
+let viewHeight = VIRTUAL_HEIGHT;
 let cssWidth = 0, cssHeight = 0;
 let last = 0, acc = 0, fps = 60, fpsTime = 0, frameCount = 0;
 const dt = 1/60;
@@ -534,18 +533,21 @@ if(window.visualViewport) window.visualViewport.addEventListener('resize', resiz
 
 function syncCanvas(){
   const newDpr = window.devicePixelRatio || 1;
-  const newCssW = innerWidth;
-  const newCssH = innerHeight;
-  const newScale = Math.min(newCssW / VIRTUAL_WIDTH, newCssH / VIRTUAL_HEIGHT);
-  const newOffsetX = (newCssW - VIRTUAL_WIDTH * newScale) / 2;
-  const newOffsetY = (newCssH - VIRTUAL_HEIGHT * newScale) / 2;
-  if(newDpr === dpr && newScale === canvasScale && newCssW === cssWidth && newCssH === cssHeight) return false;
+  const newCssW = window.innerWidth;
+  const newCssH = window.innerHeight;
+  const newScale = newCssH / VIRTUAL_HEIGHT;
+  const newViewWidth = Math.round(VIRTUAL_HEIGHT * (newCssW / newCssH));
+  const newOffsetX = (newCssW - newViewWidth * newScale) / 2;
+  const newOffsetY = 0;
+  if(newDpr === dpr && newScale === canvasScale && newCssW === cssWidth && newCssH === cssHeight && newViewWidth === viewWidth) return false;
   dpr = newDpr;
   canvasScale = newScale;
   offsetX = newOffsetX;
   offsetY = newOffsetY;
   cssWidth = newCssW;
   cssHeight = newCssH;
+  viewWidth = newViewWidth;
+  viewHeight = VIRTUAL_HEIGHT;
   eff = dpr * canvasScale;
   canvas.style.width = cssWidth + 'px';
   canvas.style.height = cssHeight + 'px';
@@ -974,8 +976,8 @@ function updateCamera(dt){
 function clampPlayerToCameraX(){
   const p = world.player;
   const camX = world.camera.x;
-  const left = camX + CAM_CLAMP_PAD;
-  const right = camX + viewWidth - p.w - CAM_CLAMP_PAD;
+  const left = camX;
+  const right = camX + viewWidth - p.w;
   if(p.x < left){
     p.x = left;
     p.vx = Math.max(0, p.vx);
@@ -1395,6 +1397,10 @@ function drawHUD(){
   ctx.fillText(camLine, 20, 40);
   ctx.strokeText(playerLine, 20, 60);
   ctx.fillText(playerLine, 20, 60);
+
+  const viewLine = `View: ${viewWidth}×${viewHeight}`;
+  ctx.strokeText(viewLine, 20, 80);
+  ctx.fillText(viewLine, 20, 80);
 
   const ver = 'v'+GAME_VERSION;
   ctx.strokeText(ver, viewWidth-80, viewHeight-20);
