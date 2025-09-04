@@ -83,6 +83,7 @@ let inputHUD = false;
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
 let worldStartX = 0, worldEndX = 0, worldMinY = 0, worldMaxY = 0, worldWidthPx = 0;
+let worldMode = 'detected';
 
 let gridSegments = [];
 let gridMinY = 0;
@@ -141,27 +142,50 @@ function resetSegment(){
 }
 
 function computeWorldBounds(){
-  worldEndX = 0;
+  const tile = 60;
+  const TAIL_TILES = 3;
+  const tail = TAIL_TILES * tile;
+  let minX = Infinity, maxX = -Infinity;
   worldMinY = Infinity;
   worldMaxY = -Infinity;
   for(const pl of world.platforms){
-    worldEndX = Math.max(worldEndX, pl.x + pl.w);
+    minX = Math.min(minX, pl.x);
+    maxX = Math.max(maxX, pl.x + pl.w);
     worldMinY = Math.min(worldMinY, pl.y);
     worldMaxY = Math.max(worldMaxY, pl.y + pl.h);
   }
   for(const c of world.coins){
-    worldEndX = Math.max(worldEndX, c.x);
+    minX = Math.min(minX, c.x);
+    maxX = Math.max(maxX, c.x);
     worldMinY = Math.min(worldMinY, c.y);
     worldMaxY = Math.max(worldMaxY, c.y);
   }
   const p = world.player;
   if(p){
-    worldEndX = Math.max(worldEndX, p.x + p.w);
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x + p.w);
     worldMinY = Math.min(worldMinY, p.y);
     worldMaxY = Math.max(worldMaxY, p.y + p.h);
   }
+  if(minX === Infinity){
+    minX = 0; maxX = 0; worldMinY = 0; worldMaxY = 0;
+  }
   if(worldMinY === Infinity) worldMinY = 0;
   if(worldMaxY === -Infinity) worldMaxY = 0;
+  minX = Math.min(minX, 0) - tail;
+  maxX = maxX + tail;
+  worldMinY -= tail;
+  worldMaxY += tail;
+  const detectedTiles = Math.ceil((maxX - minX) / tile);
+  worldMode = 'detected';
+  if(detectedTiles < 1440){
+    worldMode = 'fallback';
+    const half = (1440 / 2) * tile;
+    minX = -half;
+    maxX = half;
+  }
+  worldStartX = minX;
+  worldEndX = maxX;
   worldWidthPx = worldEndX - worldStartX;
 }
 
@@ -169,12 +193,21 @@ function rebuildGrid(){
   gridSegments = [];
   const tile = 60;
   const step = gridStep;
-  const startX = worldStartX;
-  const endX = Math.ceil(worldEndX/(tile*step))*step*tile;
+  const startX = Math.floor(worldStartX/(step*tile))*step*tile;
+  const endX = Math.ceil(worldEndX/(step*tile))*step*tile;
   worldWidthPx = endX - startX;
-  const yPad = viewHeight;
-  const minY = Math.floor((worldMinY - yPad)/(tile*step))*step*tile;
-  const maxY = Math.ceil((worldMaxY + yPad)/(tile*step))*step*tile;
+  const FALLBACK_SPAN_TILES = 1440;
+  const pad = 720 * tile;
+  let minY = worldMinY - pad;
+  let maxY = worldMaxY + pad;
+  const needed = FALLBACK_SPAN_TILES * tile;
+  if(maxY - minY < needed){
+    const extra = (needed - (maxY - minY)) / 2;
+    minY -= extra;
+    maxY += extra;
+  }
+  minY = Math.floor(minY/(step*tile))*step*tile;
+  maxY = Math.ceil(maxY/(step*tile))*step*tile;
   gridMinY = minY;
   if(!gridEnabled) return;
   const height = maxY - minY;
@@ -779,10 +812,10 @@ function drawHUD(camX, camY){
     ctx.fillText(`Δt: ${segment.delta.toFixed(2)}s`,20,130);
     ctx.fillText(`v_avg: ${vAvg.toFixed(1)}px/s (${vAvgTiles.toFixed(2)}t/s)`,20,150);
     ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | Tile: 60px`,20,170);
-    ctx.fillText(`World: ${worldTiles} tiles`,20,190);
+    ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,190);
   }else{
     ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | Tile: 60px`,20,130);
-    ctx.fillText(`World: ${worldTiles} tiles`,20,150);
+    ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
   }
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
