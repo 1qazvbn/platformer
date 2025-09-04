@@ -61,19 +61,59 @@ function randomYawnCooldown(){
 }
 
 let leftHeld = false, rightHeld = false, upHeld = false;
+let keyLeft = false, keyRight = false;
+let gpLeft = false, gpRight = false, prevGpLeft = false, prevGpRight = false;
 let moveAxis = 0;
 const AIR_DECEL = 0.98;
 const STOP_EPS = 0.05; // ~0.5px/s
+const RELEASE_CUT = 0.5;
+const RELEASE_DAMP = Math.pow(0.05, dt/0.30);
+const RELEASE_RESUME = 0.05; // 50ms
 let lastInputEvent = '';
 
 let inputHUD = false;
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
 
-function resetInput(){
-  leftHeld = rightHeld = upHeld = false;
+function resetInput(release=false){
+  keyLeft = keyRight = upHeld = false;
+  gpLeft = gpRight = prevGpLeft = prevGpRight = false;
+  leftHeld = rightHeld = false;
   moveAxis = 0;
-  if(world.player) world.player.vx = 0;
+  const p = world.player;
+  if(p){
+    if(release && !p.onGround){
+      startAirReleaseCut();
+    }else{
+      p.vx = 0;
+      p.releaseCut = false;
+    }
+  }
+}
+
+function startAirReleaseCut(){
+  const p = world.player;
+  if(!p || p.onGround) return;
+  p.vx *= RELEASE_CUT;
+  p.releaseCut = true;
+  p.releaseTimer = 0;
+}
+
+function pollGamepad(){
+  const pads = navigator.getGamepads ? navigator.getGamepads() : null;
+  if(!pads) return;
+  const gp = pads[0];
+  if(!gp){
+    if(prevGpLeft || prevGpRight) startAirReleaseCut();
+    gpLeft = gpRight = prevGpLeft = prevGpRight = false;
+    return;
+  }
+  const ax = gp.axes[0] || 0;
+  const left = ax < -0.5;
+  const right = ax > 0.5;
+  if((prevGpLeft && !left) || (prevGpRight && !right)) startAirReleaseCut();
+  prevGpLeft = gpLeft = left;
+  prevGpRight = gpRight = right;
 }
 
 let vMax = 0;
@@ -136,21 +176,23 @@ function init(){
     if(e.code==='F3'){ debug=!debug; e.preventDefault(); return; }
     if(e.code==='F1'){ inputHUD=!inputHUD; e.preventDefault(); return; }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
-    if(e.code==='ArrowLeft'||e.code==='KeyA') leftHeld=true;
-    if(e.code==='ArrowRight'||e.code==='KeyD') rightHeld=true;
+    if(e.code==='ArrowLeft'||e.code==='KeyA') keyLeft=true;
+    if(e.code==='ArrowRight'||e.code==='KeyD') keyRight=true;
     if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'){ upHeld=true; world.player.jumpBuffer=JUMP_BUFFER_MS; }
     if(e.code==='KeyR'){ resetSegment(); resetInput(); }
     lastInputEvent = 'keydown '+e.code;
   });
   window.addEventListener('keyup',e=>{
-    if(e.code==='ArrowLeft'||e.code==='KeyA') leftHeld=false;
-    if(e.code==='ArrowRight'||e.code==='KeyD') rightHeld=false;
+    let release=false;
+    if(e.code==='ArrowLeft'||e.code==='KeyA'){ if(keyLeft) release=true; keyLeft=false; }
+    if(e.code==='ArrowRight'||e.code==='KeyD'){ if(keyRight) release=true; keyRight=false; }
     if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space') upHeld=false;
+    if(release) startAirReleaseCut();
     lastInputEvent = 'keyup '+e.code;
   });
-  window.addEventListener('blur',()=>{ resetInput(); lastInputEvent='blur'; });
-  document.addEventListener('visibilitychange',()=>{ if(document.hidden){ resetInput(); lastInputEvent='vis'; } });
-  ['touchend','touchcancel','touchleave'].forEach(ev=>window.addEventListener(ev,()=>{ resetInput(); lastInputEvent=ev; }));
+  window.addEventListener('blur',()=>{ resetInput(true); lastInputEvent='blur'; });
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden){ resetInput(true); lastInputEvent='vis'; } });
+  ['touchend','touchcancel','touchleave'].forEach(ev=>window.addEventListener(ev,()=>{ resetInput(true); lastInputEvent=ev; }));
 
   // Level
   world.platforms = asArray([
@@ -176,7 +218,8 @@ function init(){
     yawnTimer:randomYawnInterval(),yawnCooldown:0,
     yawning:false,yawnPhase:0,yawnTime:0,yawnDurA:0,yawnDurP:0,yawnDurC:0,
     yawnStretch:0,yawnTilt:0,longBlink:false,
-    breathe:0,dir:1
+    breathe:0,dir:1,
+    releaseCut:false,releaseTimer:0
   };
   resetInput();
 }
@@ -206,6 +249,9 @@ function loop(t){
 function update(dt){
   if(paused) return;
   const p = world.player;
+  pollGamepad();
+  leftHeld = keyLeft || gpLeft;
+  rightHeld = keyRight || gpRight;
   p.breathe += dt*2;
 
   if(p.yawning && (!p.onGround || leftHeld || rightHeld || upHeld)){
@@ -261,20 +307,32 @@ function update(dt){
   const accel = p.onGround ? RUN_ACCEL : AIR_ACCEL;
   const prevVx = p.vx;
   moveAxis = (rightHeld?1:0) - (leftHeld?1:0);
-  if(moveAxis){
-    p.vx += moveAxis*accel;
-    p.dir = moveAxis > 0 ? 1 : -1;
-  }else{
-    if(p.onGround){
-      if(p.vx>0){ p.vx = Math.max(0, p.vx-RUN_DECEL); }
-      else if(p.vx<0){ p.vx = Math.min(0, p.vx+RUN_DECEL); }
+  if(p.releaseCut){
+    if(moveAxis===0){
+      p.vx *= RELEASE_DAMP;
+      if(Math.abs(p.vx) < STOP_EPS) { p.vx=0; p.releaseCut=false; }
     }else{
-      p.vx *= AIR_DECEL;
+      p.releaseTimer += dt;
+      p.vx *= RELEASE_DAMP;
+      if(p.releaseTimer >= RELEASE_RESUME) p.releaseCut=false;
     }
   }
-  if(!moveAxis){
-    if((prevVx>0 && p.vx<0) || (prevVx<0 && p.vx>0)) p.vx=0;
-    if(Math.abs(p.vx) < STOP_EPS) p.vx = 0;
+  if(!p.releaseCut){
+    if(moveAxis){
+      p.vx += moveAxis*accel;
+      p.dir = moveAxis > 0 ? 1 : -1;
+    }else{
+      if(p.onGround){
+        if(p.vx>0){ p.vx = Math.max(0, p.vx-RUN_DECEL); }
+        else if(p.vx<0){ p.vx = Math.min(0, p.vx+RUN_DECEL); }
+      }else{
+        p.vx *= AIR_DECEL;
+      }
+    }
+    if(!moveAxis){
+      if((prevVx>0 && p.vx<0) || (prevVx<0 && p.vx>0)) p.vx=0;
+      if(Math.abs(p.vx) < STOP_EPS) p.vx = 0;
+    }
   }
 
   if(p.jumpBuffer>0 && (p.onGround || p.coyote>0)){
@@ -292,6 +350,7 @@ function update(dt){
 
   const prevCenterX = p.x + p.w/2;
   moveAndCollide(p, dt);
+  if(p.onGround) p.releaseCut=false;
   if(!moveAxis && Math.abs(p.vx) < STOP_EPS) p.vx = 0;
   updateCoins(dt);
   updateCamera(dt);
@@ -617,7 +676,7 @@ function setupMenu(){
   const diffRadios = document.querySelectorAll('input[name="difficulty"]');
 
   const show = screen=>{
-    resetInput();
+    resetInput(true);
     mainMenu.classList.toggle('hidden', screen!=='main');
     settingsMenu.classList.toggle('hidden', screen!=='settings');
     menu.style.display='flex';
