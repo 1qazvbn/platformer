@@ -37,7 +37,7 @@ const settings = {
     lerpPerSec: 8.0
   }
 };
-if(!(settings.framingTiles >= 0 && settings.framingTiles <= 8)) settings.framingTiles = 5;
+if(!(settings.framingTiles >= 0 && settings.framingTiles <= 8)) settings.framingTiles = 0;
 
 const base = {
   maxRunSpeed: 6.0 * 3.5 * 2.20, // rebased from previous Hard
