@@ -10,6 +10,7 @@ let score = 0;
 let isReady = false;
 let loader = null;
 let debug = false;
+let paused = true;
 
 function randomBlinkInterval(){
   return Math.random() < 0.5
@@ -54,6 +55,7 @@ function start(){
   drawLoading();
   try{
     init();
+    setupMenu();
     if(self.BOOT) self.BOOT.init=true;
     last = performance.now();
     requestAnimationFrame(loop);
@@ -128,14 +130,33 @@ function init(){
   };
 }
 
-const GRAVITY = 1.2;
-const MAX_RUN_SPEED = 6.0 * 3.5; // allow up to ×4 if needed
-const RUN_ACCEL = 6.0 * 3.0;
+const DIFF_KEY = 'platformer.difficulty.v1';
+const DIFFICULTIES = {
+  easy:{label:'Easy',factor:1},
+  normal:{label:'Normal',factor:1.1},
+  hard:{label:'Hard',factor:1.2}
+};
+const BASE_MAX_RUN_SPEED = 6.0 * 3.5; // allow up to ×4 if needed
+const BASE_RUN_ACCEL = 6.0 * 3.0;
+const BASE_RUN_DECEL = 0.7; // was 0.85 (×2 decel)
+let MAX_RUN_SPEED = BASE_MAX_RUN_SPEED;
+let RUN_ACCEL = BASE_RUN_ACCEL;
+let RUN_DECEL = BASE_RUN_DECEL;
 const AIR_ACCEL = 6.0; // keep air control
 const JUMP_VELOCITY = -35;
 const COYOTE_MS = 100;
 const JUMP_BUFFER_MS = 120;
-const RUN_DECEL = 0.7; // was 0.85 (×2 decel)
+const GRAVITY = 1.2;
+let difficulty = localStorage.getItem(DIFF_KEY) || 'easy';
+if(!DIFFICULTIES[difficulty]) difficulty = 'easy';
+applyDifficulty();
+
+function applyDifficulty(){
+  const factor = DIFFICULTIES[difficulty].factor;
+  MAX_RUN_SPEED = BASE_MAX_RUN_SPEED * factor;
+  RUN_ACCEL = BASE_RUN_ACCEL * factor;
+  RUN_DECEL = BASE_RUN_DECEL * factor;
+}
 
 function loop(t){
   try{
@@ -159,6 +180,7 @@ function loop(t){
 }
 
 function update(dt){
+  if(paused) return;
   const p = world.player;
   p.breathe += dt*2;
 
@@ -525,21 +547,63 @@ function drawHUD(camX, camY){
   ctx.font = '16px sans-serif';
   ctx.fillText('Coins: '+score,20,30);
   ctx.fillText('Arrows/A,D move • W/↑/Space jump • R reset timer',20,50);
+  ctx.fillText(`Diff: ${DIFFICULTIES[difficulty].label} (x${DIFFICULTIES[difficulty].factor.toFixed(2)})`,20,70);
   const p = world.player;
   const vInst = p.vx*10;
   const vTiles = vInst/60;
-  ctx.fillText(`v_inst: ${vInst.toFixed(1)}px/s (${vTiles.toFixed(2)}t/s)`,20,70);
-  ctx.fillText(`v_max: ${vMax.toFixed(1)}px/s`,20,90);
+  ctx.fillText(`v_inst: ${vInst.toFixed(1)}px/s (${vTiles.toFixed(2)}t/s)`,20,90);
+  ctx.fillText(`v_max: ${vMax.toFixed(1)}px/s`,20,110);
   if(segment.done){
     const vAvg = 1200/segment.delta;
     const vAvgTiles = vAvg/60;
-    ctx.fillText(`Δt: ${segment.delta.toFixed(2)}s`,20,110);
-    ctx.fillText(`v_avg: ${vAvg.toFixed(1)}px/s (${vAvgTiles.toFixed(2)}t/s)`,20,130);
+    ctx.fillText(`Δt: ${segment.delta.toFixed(2)}s`,20,130);
+    ctx.fillText(`v_avg: ${vAvg.toFixed(1)}px/s (${vAvgTiles.toFixed(2)}t/s)`,20,150);
   }
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
-    ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,150);
-    ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,170);
-    ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,190);
+    ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,170);
+    ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,190);
+    ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,210);
   }
+}
+
+function setupMenu(){
+  const menu = document.getElementById('menu');
+  const mainMenu = document.getElementById('menu-main');
+  const settingsMenu = document.getElementById('menu-settings');
+  const startBtn = document.getElementById('btn-start');
+  const settingsBtn = document.getElementById('btn-settings');
+  const backBtn = document.getElementById('btn-back');
+  const diffRadios = document.querySelectorAll('input[name="difficulty"]');
+
+  const show = screen=>{
+    mainMenu.classList.toggle('hidden', screen!=='main');
+    settingsMenu.classList.toggle('hidden', screen!=='settings');
+    menu.style.display='flex';
+    paused = true;
+  };
+
+  startBtn.addEventListener('click',()=>{ menu.style.display='none'; paused=false; });
+  settingsBtn.addEventListener('click',()=>show('settings'));
+  backBtn.addEventListener('click',()=>show('main'));
+
+  diffRadios.forEach(r=>r.addEventListener('change',e=>{
+    difficulty = e.target.value;
+    applyDifficulty();
+    localStorage.setItem(DIFF_KEY,difficulty);
+  }));
+  const saved = document.querySelector(`input[name="difficulty"][value="${difficulty}"]`);
+  if(saved) saved.checked = true;
+
+  window.addEventListener('keydown',e=>{
+    if(menu.style.display!=='none'){
+      if(!mainMenu.classList.contains('hidden')){
+        if(e.code==='Enter'){ menu.style.display='none'; paused=false; e.preventDefault(); }
+      }else{
+        if(e.code==='Escape'||e.code==='Backspace'){ show('main'); e.preventDefault(); }
+      }
+    }
+  });
+
+  show('main');
 }
