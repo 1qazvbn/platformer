@@ -13,7 +13,8 @@ let debug = false;
 let paused = true;
 
 const DIFF_KEY = 'platformer.difficulty.v1';
-const DIFF_FACTORS = { Easy:1.00, Normal:1.30, Hard:1.60 };
+// Difficulty multipliers relative to Easy base values
+const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
 
 const base = {
   maxRunSpeed: 6.0 * 3.5, // allow up to ×4 if needed
