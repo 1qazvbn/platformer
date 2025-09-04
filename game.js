@@ -145,6 +145,28 @@ const PLATFORM_GEN = {
 
 const snap = v => Math.round(v * eff) / eff;
 
+function maxReachX(dy){
+  return Math.min(6 - 2*dy, 10);
+}
+
+function isReachable(dx, dy){
+  if(dy > 1) return false;
+  if(dy === 1) return dx <= 6;
+  if(dy === 0) return dx <= 6;
+  return dx <= maxReachX(dy);
+}
+
+function hasHeadClearance(x, y, w, clearanceTiles=2){
+  const tile = tileSize;
+  const area = {x, y: y - clearanceTiles*tile, w, h: clearanceTiles*tile};
+  for(const pl of world.platforms){
+    if(area.x < pl.x + pl.w && area.x + area.w > pl.x && area.y < pl.y + pl.h && area.y + area.h > pl.y){
+      return false;
+    }
+  }
+  return true;
+}
+
 function resetInput(release=false){
   keyLeft = keyRight = upHeld = false;
   gpLeft = gpRight = prevGpLeft = prevGpRight = false;
@@ -442,18 +464,35 @@ function generateLevel(seed, layers=4){
 
   // sequential generation to the right
   while(last.x + last.w - startLeft < maxSpanPx){
-    const dy = PLATFORM_GEN.allowedDeltaY[Math.floor(rnd()*PLATFORM_GEN.allowedDeltaY.length)];
-    let maxDx = Math.floor(6 - 2*dy); // reach model
-    if(maxDx > 10) maxDx = 10;
-    if(maxDx < 1) maxDx = 1;
-    const minDx = Math.min(PLATFORM_GEN.minDx, maxDx);
-    const dx = minDx + Math.floor(rnd()*(maxDx - minDx + 1));
-    const nx = last.x + last.w + dx*tile;
-    const ny = last.y - dy*tile;
-    const pl = {x:nx, y:ny, w, h, level:0};
-    world.platforms.push(pl);
-    world.coins.push({x:pl.x + pl.w/2, y:pl.y - 1.2*tile, t:0, collected:false});
-    last = pl;
+    let placed = false;
+    for(let attempts=0; attempts<20 && !placed; attempts++){
+      const dy = PLATFORM_GEN.allowedDeltaY[Math.floor(rnd()*PLATFORM_GEN.allowedDeltaY.length)];
+      let maxDx = dy >= 0 ? 6 : Math.max(1, Math.min(maxReachX(dy), 10));
+      const minDx = Math.min(PLATFORM_GEN.minDx, maxDx);
+      if(maxDx < minDx) continue;
+      const dx = minDx + Math.floor(rnd()*(maxDx - minDx + 1));
+      if(!isReachable(dx, dy)) continue;
+      const nx = last.x + last.w + dx*tile;
+      const ny = last.y - dy*tile;
+      const pl = {x:nx, y:ny, w, h, level:0};
+      // collision check
+      let overlap = false;
+      for(const other of world.platforms){
+        if(pl.x < other.x + other.w && pl.x + pl.w > other.x && pl.y < other.y + other.h && pl.y + pl.h > other.y){
+          overlap = true;
+          break;
+        }
+      }
+      if(overlap) continue;
+      // head clearance at takeoff and landing
+      if(!hasHeadClearance(last.x, last.y, last.w)) continue;
+      if(!hasHeadClearance(pl.x, pl.y, pl.w)) continue;
+      world.platforms.push(pl);
+      world.coins.push({x:pl.x + pl.w/2, y:pl.y - 1.2*tile, t:0, collected:false});
+      last = pl;
+      placed = true;
+    }
+    if(!placed) break;
   }
 
   adjustCoinPlatforms();
