@@ -97,8 +97,10 @@ let gridCacheKey = '';
 let gridDrawnPrev = false;
 let gridDrawnNow = false;
 
-const REACH_SAFE = 0.85;
+const REACH_SAFE_Y = 0.75;
+const REACH_SAFE_X = 0.80;
 let reachV = 0, reachH0 = 0, reachHrun = 0;
+let fixedCoins = 0, unreachableCoins = 0;
 
 const snap = v => Math.round(v * eff) / eff;
 
@@ -236,30 +238,117 @@ function adjustCoinPlatforms(){
     const pl = world.platforms.find(p=>c.x>=p.x && c.x<=p.x+p.w);
     if(pl) pairs.push({pl,c});
   }
-  pairs.sort((a,b)=>a.pl.x - b.pl.x);
-  let prev = ground;
-  const maxV = reachV * REACH_SAFE;
-  const maxH = reachHrun * REACH_SAFE;
+  const maxV = reachV * REACH_SAFE_Y;
+  const maxH = reachHrun * REACH_SAFE_X;
+  const player = world.player || {w:40};
+  const minLanding = player.w * 1.5;
+  fixedCoins = 0;
+  unreachableCoins = 0;
+
+  const findSupport = pl=>{
+    let best = ground;
+    let bestMetric = Infinity;
+    for(const p of world.platforms){
+      if(p===pl) continue;
+      const dx = pl.x - (p.x + p.w);
+      const dy = p.y - pl.y;
+      if(dx >= 0 && dy >= 0){
+        const m = dx + dy;
+        if(m < bestMetric){ bestMetric = m; best = p; }
+      }else if(dx < 0 && dy >= 0 && p.x < pl.x + pl.w && p.x + p.w > pl.x){
+        const m = dy;
+        if(m < bestMetric){ bestMetric = m; best = p; }
+      }
+    }
+    return best;
+  };
+
+  const unresolved = [];
+
   for(const {pl,c} of pairs){
-    const diffY = prev.y - pl.y;
+    if(pl.w < minLanding) pl.w = minLanding;
+    const support = findSupport(pl);
+    let changed = false;
+
+    // vertical adjustment
+    let diffY = support.y - pl.y;
     if(diffY > maxV){
-      const newY = Math.min(prev.y - maxV, ground.y - pl.h);
+      let newY = support.y - maxV;
+      for(const other of world.platforms){
+        if(other===pl) continue;
+        if(pl.x < other.x + other.w && pl.x + pl.w > other.x){
+          if(newY + pl.h > other.y && newY < other.y + other.h){
+            newY = other.y - pl.h;
+          }
+        }
+      }
       const dy = newY - pl.y;
-      pl.y = newY;
-      c.y += dy;
-      pl.flash = true;
+      if(dy){
+        pl.y = newY;
+        c.y += dy;
+        changed = true;
+      }
+      diffY = support.y - pl.y;
     }
-    const prevRight = prev.x + prev.w;
-    const gap = pl.x - prevRight;
+
+    // horizontal adjustment
+    let gap = pl.x - (support.x + support.w);
     if(gap > maxH){
-      const newX = pl.x - (gap - maxH);
+      let newX = pl.x - (gap - maxH);
+      for(const other of world.platforms){
+        if(other===pl) continue;
+        if(newX < other.x + other.w && newX + pl.w > other.x){
+          newX = other.x + other.w;
+        }
+      }
       const dx = newX - pl.x;
-      pl.x = newX;
-      c.x += dx;
-      pl.flash = true;
+      if(dx){
+        pl.x = newX;
+        c.x += dx;
+        changed = true;
+      }
+      gap = pl.x - (support.x + support.w);
     }
-    prev = pl;
+
+    if(diffY <= maxV && gap <= maxH){
+      if(changed){
+        fixedCoins++;
+        pl.flash = 'green';
+      }
+    }else{
+      unresolved.push({pl,c,support});
+      unreachableCoins++;
+      pl.flash = 'red';
+    }
   }
+
+  if(unresolved.length){
+    const shift = 2 * tileSize;
+    for(const item of unresolved){
+      const {pl,c,support} = item;
+      let newY = pl.y + shift;
+      for(const other of world.platforms){
+        if(other===pl) continue;
+        if(pl.x < other.x + other.w && pl.x + pl.w > other.x){
+          if(newY + pl.h > other.y && newY < other.y + other.h){
+            newY = other.y - pl.h;
+          }
+        }
+      }
+      const dy = newY - pl.y;
+      if(dy){ pl.y = newY; c.y += dy; }
+      const diffY = support.y - pl.y;
+      const gap = pl.x - (support.x + support.w);
+      if(diffY <= maxV && gap <= maxH){
+        fixedCoins++;
+        unreachableCoins--;
+        pl.flash = 'green';
+      }else{
+        pl.flash = 'red';
+      }
+    }
+  }
+
   computeWorldBounds();
   rebuildGrid();
 }
@@ -815,9 +904,10 @@ function drawPlatform(pl){
   ctx.fillRect(0,-4,pl.w,8);
   for(let x=0;x<pl.w;x+=6){ ctx.beginPath(); ctx.moveTo(x,-4); ctx.lineTo(x+3,0); ctx.lineTo(x+6,-4); ctx.fill(); }
   if(pl.flash){
-    ctx.fillStyle = 'rgba(0,255,0,0.4)';
+    const clr = pl.flash === 'red' ? 'rgba(255,0,0,0.4)' : 'rgba(0,255,0,0.4)';
+    ctx.fillStyle = clr;
     ctx.fillRect(0,0,pl.w,pl.h);
-    pl.flash = false;
+    pl.flash = null;
   }
   ctx.restore();
 }
@@ -945,11 +1035,11 @@ function drawHUD(camX, camY){
   }
   ctx.fillText('Ground ΔY: +4 tiles',20,segment.done?210:170);
   ctx.fillText(`Cam anchorY: ${world.camera.anchorY.toFixed(2)}`,20,segment.done?230:190);
+  ctx.fillText(`Reach V=${reachV.toFixed(0)} H0=${reachH0.toFixed(0)} Hrun=${reachHrun.toFixed(0)} | Fixed:${fixedCoins} | Unreachable:${unreachableCoins}`,
+    20,segment.done?250:210);
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
-    const reachY = segment.done?230:190;
-    ctx.fillText(`Reach: V=${reachV.toFixed(0)} H0=${reachH0.toFixed(0)} Hrun=${reachHrun.toFixed(0)} S=85%`,20,reachY);
-    const dbgY = reachY+20;
+    const dbgY = segment.done?270:230;
     ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,dbgY);
     ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,dbgY+20);
     ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,dbgY+40);
