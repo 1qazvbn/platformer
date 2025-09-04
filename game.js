@@ -3,12 +3,13 @@ if(self.BOOT) self.BOOT.script = true;
 
 function asArray(v){ return Array.isArray(v)?v:[]; }
 
-let canvas, ctx, last=0, acc=0, fps=60, fpsTime=0, frameCount=0;
+let canvas, ctx, dpr=1, viewWidth=0, viewHeight=0, last=0, acc=0, fps=60, fpsTime=0, frameCount=0;
 const dt = 1/60;
 let safeMode = false;
 let score = 0;
 let isReady = false;
 let loader = null;
+let debug = false;
 
 const keys = {left:false,right:false,up:false};
 
@@ -44,14 +45,21 @@ if(document.readyState==='loading') window.addEventListener('DOMContentLoaded', 
 window.addEventListener('resize', resize);
 
 function resize(){
-  canvas.width = innerWidth;
-  canvas.height = innerHeight;
-  if(innerWidth < 720) safeMode = true;
+  dpr = window.devicePixelRatio || 1;
+  viewWidth = innerWidth;
+  viewHeight = innerHeight;
+  canvas.style.width = viewWidth + 'px';
+  canvas.style.height = viewHeight + 'px';
+  canvas.width = Math.floor(viewWidth * dpr);
+  canvas.height = Math.floor(viewHeight * dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(viewWidth < 720) safeMode = true;
 }
 
 function init(){
   // Input
   window.addEventListener('keydown',e=>{
+    if(e.code==='F3'){ debug=!debug; e.preventDefault(); return; }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
     if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=true;
     if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=true;
@@ -98,7 +106,8 @@ function loop(t){
     acc += delta/1000;
     frameCount++;
     if(t - fpsTime > 1000){ fps = frameCount; frameCount=0; fpsTime=t; if(fps<30) safeMode=true; }
-    while(acc>dt){ update(dt); acc-=dt; }
+    let steps=0; while(acc >= dt && steps < 5){ update(dt); acc-=dt; steps++; }
+    if(acc>dt) acc=dt;
     render();
     if(!isReady){
       isReady = true;
@@ -183,10 +192,14 @@ function updateCoins(dt){
 
 function updateCamera(dt){
   const p = world.player;
-  const targetX = p.x + p.w/2 - canvas.width/2;
-  const targetY = p.y + p.h/2 - canvas.height/2;
-  world.camera.x += (targetX - world.camera.x)*0.1;
-  world.camera.y += (targetY - world.camera.y)*0.1;
+  const targetX = p.x + p.w/2 - viewWidth/2;
+  const targetY = p.y + p.h/2 - viewHeight/2;
+  world.camera.x += (targetX - world.camera.x)*0.15;
+  world.camera.y += (targetY - world.camera.y)*0.15;
+  if(p.onGround){
+    if(Math.abs(p.vx) < 0.05 && Math.abs(targetX - world.camera.x) < 0.5) world.camera.x = targetX;
+    if(Math.abs(p.vy) < 0.05 && Math.abs(targetY - world.camera.y) < 0.5) world.camera.y = targetY;
+  }
 }
 
 function rectIntersect(a,b){
@@ -194,20 +207,21 @@ function rectIntersect(a,b){
 }
 
 function render(){
-  drawBackground(Math.round(world.camera.x*0.2));
-  ctx.save();
-  const camX = Math.round(world.camera.x);
-  const camY = Math.round(world.camera.y);
-  ctx.translate(-camX, -camY);
+  const camX = Math.round(world.camera.x*dpr)/dpr;
+  const camY = Math.round(world.camera.y*dpr)/dpr;
+  const bgOffset = Math.round(camX*0.2*dpr)/dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  drawBackground(bgOffset);
+  ctx.setTransform(dpr,0,0,dpr,-camX*dpr,-camY*dpr);
   drawPlatforms();
   drawCoins();
   drawPlayer();
-  ctx.restore();
-  drawHUD();
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  drawHUD(camX, camY);
 }
 
 function drawBackground(offset){
-  const w = canvas.width, h = canvas.height;
+  const w = viewWidth, h = viewHeight;
   const grad = ctx.createLinearGradient(0,0,0,h);
   grad.addColorStop(0,'#4a90e2');
   grad.addColorStop(1,'#87ceeb');
@@ -215,12 +229,13 @@ function drawBackground(offset){
   ctx.fillRect(0,0,w,h);
   if(!safeMode){
     ctx.fillStyle = '#a0d0ff';
-      for(let i=0;i<3;i++){
-        const x = Math.round((offset*0.3 + i*200)% (w+200) -200);
-        ctx.beginPath();
-        ctx.arc(x,100+i*30,80,0,Math.PI*2);
-        ctx.fill();
-      }
+    const cloudOffset = Math.round(offset*0.3*dpr)/dpr;
+    for(let i=0;i<3;i++){
+      const x = Math.round(((cloudOffset + i*200) % (w+200) -200)*dpr)/dpr;
+      ctx.beginPath();
+      ctx.arc(x,100+i*30,80,0,Math.PI*2);
+      ctx.fill();
+    }
   }
 }
 
@@ -326,10 +341,16 @@ function getGroundY(p){
   return gy;
 }
 
-function drawHUD(){
+function drawHUD(camX, camY){
   ctx.fillStyle = '#fff';
   ctx.font = '16px sans-serif';
   ctx.fillText('Coins: '+score,20,30);
   ctx.fillText('Arrows/A,D move • W/↑/Space jump',20,50);
-  ctx.fillText('v'+GAME_VERSION, canvas.width-80, canvas.height-20);
+  ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
+  if(debug){
+    const p = world.player;
+    ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,70);
+    ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,90);
+    ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,110);
+  }
 }
