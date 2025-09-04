@@ -8,7 +8,7 @@ const VIRTUAL_HEIGHT = 810;
 const tileSize = 60;
 
 const CLAMP_PLAYER_TO_CAMERA_X = true;
-const CAM_CLAMP_PAD = 4; // пиксели запаса от краёв экрана
+const CAM_CLAMP_PAD = -50; // пиксели запаса от краёв экрана
 
 const PARALLAX_ENABLED = true;
 const parallax = { segments:{}, clouds:[] };
