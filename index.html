@@ -64,5 +64,19 @@ window.onunhandledrejection=e=>{showError(e.reason);};
 </head><body>
 <div id="loading-screen">Loading…</div>
 <canvas id="game"></canvas>
+<div id="menu">
+  <div id="menu-main" class="menu-screen">
+    <button id="btn-start" class="menu-btn">START</button>
+    <button id="btn-settings" class="menu-btn">SETTINGS</button>
+  </div>
+  <div id="menu-settings" class="menu-screen hidden">
+    <div class="difficulty-options">
+      <label><input type="radio" name="difficulty" value="easy"> Easy</label>
+      <label><input type="radio" name="difficulty" value="normal"> Normal</label>
+      <label><input type="radio" name="difficulty" value="hard"> Hard</label>
+    </div>
+    <button id="btn-back" class="menu-btn">BACK</button>
+  </div>
+</div>
 <div id="error-overlay"></div>
 </body></html>
