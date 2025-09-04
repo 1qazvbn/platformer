@@ -82,6 +82,10 @@ let lastInputEvent = '';
 let inputHUD = false;
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
+let worldEndX = 0, worldMinY = 0, worldMaxY = 0;
+
+let gridCanvas = null;
+let gridMinY = 0;
 
 function resetInput(release=false){
   keyLeft = keyRight = upHeld = false;
@@ -136,6 +140,83 @@ function resetSegment(){
   segment.delta=0;
 }
 
+function computeWorldBounds(){
+  worldEndX = 0;
+  worldMinY = Infinity;
+  worldMaxY = -Infinity;
+  for(const pl of world.platforms){
+    worldEndX = Math.max(worldEndX, pl.x + pl.w);
+    worldMinY = Math.min(worldMinY, pl.y);
+    worldMaxY = Math.max(worldMaxY, pl.y + pl.h);
+  }
+  for(const c of world.coins){
+    worldEndX = Math.max(worldEndX, c.x);
+    worldMinY = Math.min(worldMinY, c.y);
+    worldMaxY = Math.max(worldMaxY, c.y);
+  }
+  const p = world.player;
+  if(p){
+    worldEndX = Math.max(worldEndX, p.x + p.w);
+    worldMinY = Math.min(worldMinY, p.y);
+    worldMaxY = Math.max(worldMaxY, p.y + p.h);
+  }
+  if(worldMinY === Infinity) worldMinY = 0;
+  if(worldMaxY === -Infinity) worldMaxY = 0;
+}
+
+function rebuildGrid(){
+  gridCanvas = null;
+  if(!gridEnabled) return;
+  const tile = 60;
+  const step = gridStep;
+  const startX = 0;
+  const endX = Math.ceil(worldEndX/(tile*step))*step*tile;
+  const yPad = viewHeight;
+  const minY = Math.floor((worldMinY - yPad)/(tile*step))*step*tile;
+  const maxY = Math.ceil((worldMaxY + yPad)/(tile*step))*step*tile;
+  gridMinY = minY;
+  const width = endX - startX;
+  const height = maxY - minY;
+  gridCanvas = document.createElement('canvas');
+  gridCanvas.width = Math.max(1, Math.ceil(width*dpr));
+  gridCanvas.height = Math.max(1, Math.ceil(height*dpr));
+  const g = gridCanvas.getContext('2d');
+  g.scale(dpr,dpr);
+  g.translate(-startX,-minY);
+  g.font = '10px sans-serif';
+  g.textBaseline = 'top';
+  for(let x=startX;x<=endX;x+=step*tile){
+    const idx = Math.round(x/tile);
+    const major = idx%10===0;
+    g.strokeStyle = major?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.1)';
+    g.lineWidth = major?1.5:1;
+    const lx = Math.round(x)+0.5;
+    g.beginPath();
+    g.moveTo(lx,minY);
+    g.lineTo(lx,maxY);
+    g.stroke();
+    if(major){
+      g.fillStyle='rgba(255,255,255,0.3)';
+      g.fillText(idx,x+2,minY+2);
+    }
+  }
+  for(let y=minY;y<=maxY;y+=step*tile){
+    const idx = Math.round(y/tile);
+    const major = idx%10===0;
+    g.strokeStyle = major?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.1)';
+    g.lineWidth = major?1.5:1;
+    const ly = Math.round(y)+0.5;
+    g.beginPath();
+    g.moveTo(startX,ly);
+    g.lineTo(endX,ly);
+    g.stroke();
+    if(major){
+      g.fillStyle='rgba(255,255,255,0.3)';
+      g.fillText(idx,startX+2,y+2);
+    }
+  }
+}
+
 let started=false;
 function start(){
   if(started) return;
@@ -176,6 +257,7 @@ function resize(){
   canvas.height = Math.floor(viewHeight * dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
   if(viewWidth < 720) safeMode = true;
+  rebuildGrid();
 }
 
 function init(){
@@ -231,6 +313,8 @@ function init(){
     breathe:0,dir:1,
     releaseCut:false,releaseTimer:0
   };
+  computeWorldBounds();
+  rebuildGrid();
   gridBtn = document.getElementById('btn-grid');
   stepBtn = document.getElementById('btn-step');
   const bindBtn = (el, handler)=>{
@@ -544,48 +628,8 @@ function drawBackground(offset){
 }
 
 function drawGrid(camX, camY){
-  if(!gridEnabled) return;
-  const tile = 60;
-  const step = gridStep;
-  const left = camX - viewWidth/2;
-  const right = camX + viewWidth/2;
-  const top = camY - viewHeight/2;
-  const bottom = camY + viewHeight/2;
-  const startX = Math.floor(left/(tile*step))*step*tile;
-  const endX = Math.ceil(right/(tile*step))*step*tile;
-  const startY = Math.floor(top/(tile*step))*step*tile;
-  const endY = Math.ceil(bottom/(tile*step))*step*tile;
-  ctx.save();
-  ctx.font = '10px sans-serif';
-  for(let x=startX;x<=endX;x+=step*tile){
-    const idx = Math.round(x/tile);
-    const major = idx%10===0;
-    ctx.strokeStyle = major?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.1)';
-    ctx.lineWidth = major?1.5:1;
-    ctx.beginPath();
-    ctx.moveTo(x,startY);
-    ctx.lineTo(x,endY);
-    ctx.stroke();
-    if(major){
-      ctx.fillStyle='rgba(255,255,255,0.3)';
-      ctx.fillText(idx,x+2,startY+12);
-    }
-  }
-  for(let y=startY;y<=endY;y+=step*tile){
-    const idx = Math.round(y/tile);
-    const major = idx%10===0;
-    ctx.strokeStyle = major?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.1)';
-    ctx.lineWidth = major?1.5:1;
-    ctx.beginPath();
-    ctx.moveTo(startX,y);
-    ctx.lineTo(endX,y);
-    ctx.stroke();
-    if(major){
-      ctx.fillStyle='rgba(255,255,255,0.3)';
-      ctx.fillText(idx,startX+2,y+12);
-    }
-  }
-  ctx.restore();
+  if(!gridEnabled || !gridCanvas) return;
+  ctx.drawImage(gridCanvas, 0, gridMinY);
 }
 
 function drawPlatform(pl){
@@ -720,12 +764,16 @@ function drawHUD(camX, camY){
     const vAvgTiles = vAvg/60;
     ctx.fillText(`Δt: ${segment.delta.toFixed(2)}s`,20,130);
     ctx.fillText(`v_avg: ${vAvg.toFixed(1)}px/s (${vAvgTiles.toFixed(2)}t/s)`,20,150);
+    ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | Tile: 60px`,20,170);
+  }else{
+    ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | Tile: 60px`,20,130);
   }
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
-    ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,170);
-    ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,190);
-    ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,210);
+    const dbgY = segment.done?190:150;
+    ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,dbgY);
+    ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,dbgY+20);
+    ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,dbgY+40);
   }
   if(inputHUD){
     ctx.fillText(`L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${p.vx.toFixed(2)} last:${lastInputEvent}`,20,viewHeight-40);
@@ -741,12 +789,14 @@ function toggleGrid(){
   gridEnabled = !gridEnabled;
   localStorage.setItem(GRID_ENABLED_KEY, gridEnabled);
   updateGridButtons();
+  rebuildGrid();
 }
 
 function toggleGridStep(){
   gridStep = gridStep===1?5:1;
   localStorage.setItem(GRID_STEP_KEY, gridStep);
   updateGridButtons();
+  rebuildGrid();
 }
 
 function setupMenu(){
