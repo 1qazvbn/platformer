@@ -11,6 +11,12 @@ let isReady = false;
 let loader = null;
 let debug = false;
 
+function randomBlinkInterval(){
+  return Math.random() < 0.5
+    ? 2000 + Math.random()*1500
+    : 3000 + Math.random()*2250;
+}
+
 const keys = {left:false,right:false,up:false};
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
@@ -89,7 +95,7 @@ function init(){
   world.player = {
     x:0,y:0,w:40,h:40,vx:0,vy:0,onGround:false,
     coyote:0,jumpBuffer:0,
-    scaleX:1,scaleY:1,blink:1,blinkTimer:4000+Math.random()*3000,blinkDuration:0,blinkRepeat:false,breathe:0,dir:1
+    scaleX:1,scaleY:1,blink:1,blinkTimer:randomBlinkInterval(),blinkDuration:0,blinkRepeat:false,breathe:0,dir:1
   };
 }
 
@@ -128,17 +134,20 @@ function update(dt){
   if(p.blinkTimer<=0 && p.blinkDuration<=0){
     p.blink = 0;
     p.blinkDuration = 120 + Math.random()*60;
-    p.blinkRepeat = Math.random() < 0.1;
+    if(p.blinkRepeat){
+      p.blinkRepeat = false;
+    }else{
+      p.blinkRepeat = Math.random() < 0.1;
+    }
   }
   if(p.blinkDuration>0){
     p.blinkDuration -= dt*1000;
     if(p.blinkDuration<=0){
       p.blink = 1;
       if(p.blinkRepeat){
-        p.blinkRepeat = false;
-        p.blinkTimer = 120 + Math.random()*60;
+        p.blinkTimer = 60 + Math.random()*40;
       }else{
-        p.blinkTimer = 4000 + Math.random()*3000;
+        p.blinkTimer = randomBlinkInterval();
       }
     }
   }
