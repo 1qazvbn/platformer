@@ -101,6 +101,7 @@ const REACH_SAFE_Y = 0.75;
 const REACH_SAFE_X = 0.80;
 let reachV = 0, reachH0 = 0, reachHrun = 0;
 let fixedCoins = 0, unreachableCoins = 0;
+let movedCoinPlatforms = 0, clampedCoinPlatforms = 0;
 
 const snap = v => Math.round(v * eff) / eff;
 
@@ -356,9 +357,13 @@ function adjustCoinPlatforms(){
 function lowerCoinPlatforms(){
   const delta = 4 * tileSize;
   const minGap = 0.5 * tileSize;
+  movedCoinPlatforms = 0;
+  clampedCoinPlatforms = 0;
   for(const pl of world.platforms){
+    if(pl.w >= 6 * tileSize || pl.type === 'large' || pl.tag === 'large' || pl.support) continue;
     const coins = world.coins.filter(c => c.x >= pl.x && c.x <= pl.x + pl.w);
     if(!coins.length) continue;
+    const offsets = coins.map(c => c.y - pl.y);
     let targetY = pl.y + delta;
     for(const other of world.platforms){
       if(other === pl) continue;
@@ -370,7 +375,9 @@ function lowerCoinPlatforms(){
     const dy = targetY - pl.y;
     if(dy > 0){
       pl.y = targetY;
-      for(const c of coins) c.y += dy;
+      coins.forEach((c,i)=>{ c.y = pl.y + offsets[i]; });
+      movedCoinPlatforms++;
+      if(dy < delta) clampedCoinPlatforms++;
     }
   }
 }
@@ -1057,7 +1064,7 @@ function drawHUD(camX, camY){
   ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
   }
   ctx.fillText('Ground ΔY: +4 tiles',20,segment.done?210:170);
-  ctx.fillText('Adj: coin platforms −4 tiles',20,segment.done?230:190);
+  ctx.fillText(`Adj: small coin platforms −4t (moved:${movedCoinPlatforms}, clamped:${clampedCoinPlatforms})`,20,segment.done?230:190);
   ctx.fillText(`Cam anchorY: ${world.camera.anchorY.toFixed(2)}`,20,segment.done?250:210);
   ctx.fillText(`Reach V=${reachV.toFixed(0)} H0=${reachH0.toFixed(0)} Hrun=${reachHrun.toFixed(0)} | Fixed:${fixedCoins} | Unreachable:${unreachableCoins}`,
     20,segment.done?270:230);
