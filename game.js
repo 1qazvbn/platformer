@@ -87,6 +87,8 @@ let worldMode = 'detected';
 
 let gridSegments = [];
 let gridMinY = 0;
+let gridMaxY = 0;
+let gridCacheKey = '';
 let gridDrawnPrev = false;
 let gridDrawnNow = false;
 
@@ -192,7 +194,6 @@ function computeWorldBounds(){
 }
 
 function rebuildGrid(){
-  gridSegments = [];
   const tile = 60;
   const step = gridStep;
   const startX = Math.floor(worldStartX/(step*tile))*step*tile;
@@ -212,46 +213,41 @@ function rebuildGrid(){
   minY = Math.floor(minY/(step*tile))*step*tile;
   maxY = Math.ceil(maxY/(step*tile))*step*tile;
   gridMinY = minY;
-  if(!gridEnabled) return;
+  gridMaxY = maxY;
   const height = maxY - minY;
+  const key = [gridEnabled,step,tile,dpr,startX,endX,minY,maxY].join('|');
+  if(key === gridCacheKey) return;
+  gridCacheKey = key;
+  gridSegments = [];
+  if(!gridEnabled) return;
   const SEG_W = 4096;
   for(let sx=startX; sx<endX; sx+=SEG_W){
     const segW = Math.min(SEG_W, endX - sx);
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.ceil(segW*dpr));
-    canvas.height = Math.max(1, Math.ceil(height*dpr));
+    canvas.width = Math.max(1, Math.round(segW*dpr));
+    canvas.height = Math.max(1, Math.round(height*dpr));
     const g = canvas.getContext('2d');
-    g.scale(dpr,dpr);
+    g.setTransform(dpr,0,0,dpr,0,0);
     g.translate(-sx,-minY);
-    g.font = `${10/dpr}px sans-serif`;
-    g.textBaseline = 'top';
     const vxStart = Math.ceil(sx/(step*tile))*step*tile;
     for(let x=vxStart; x<=sx+segW; x+=step*tile){
       const idx = Math.round(x/tile);
       const major = idx%10===0;
-      g.strokeStyle = major?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.18)';
-      g.lineWidth = (major?2:1)/dpr;
-      const lx = (Math.round(x*dpr)+0.5)/dpr;
-      g.beginPath();
-      g.moveTo(lx,minY);
-      g.lineTo(lx,maxY);
-      g.stroke();
-      if(major){
-        g.fillStyle='rgba(255,255,255,0.35)';
-        g.fillText(idx, lx+2/dpr, minY+2/dpr);
-      }
+      const color = major?'rgba(255,255,255,0.55)':'rgba(255,255,255,0.25)';
+      const thickness = (major?2:1)/dpr;
+      const lx = Math.round(x*dpr)/dpr;
+      g.fillStyle = color;
+      g.fillRect(lx, minY, thickness, height);
     }
     const hyStart = Math.ceil(minY/(step*tile))*step*tile;
     for(let y=hyStart; y<=maxY; y+=step*tile){
       const idx = Math.round(y/tile);
       const major = idx%10===0;
-      g.strokeStyle = major?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.18)';
-      g.lineWidth = (major?2:1)/dpr;
-      const ly = (Math.round(y*dpr)+0.5)/dpr;
-      g.beginPath();
-      g.moveTo(sx,ly);
-      g.lineTo(sx+segW,ly);
-      g.stroke();
+      const color = major?'rgba(255,255,255,0.55)':'rgba(255,255,255,0.25)';
+      const thickness = (major?2:1)/dpr;
+      const ly = Math.round(y*dpr)/dpr;
+      g.fillStyle = color;
+      g.fillRect(sx, ly, segW, thickness);
     }
     gridSegments.push({canvas,x:sx,w:segW});
   }
@@ -287,17 +283,25 @@ function drawLoading(){
 if(document.readyState==='loading') window.addEventListener('DOMContentLoaded', start, {once:true}); else start();
 window.addEventListener('resize', resize);
 
-function resize(){
-  dpr = window.devicePixelRatio || 1;
-  viewWidth = innerWidth;
-  viewHeight = innerHeight;
+function syncCanvas(){
+  const newDpr = window.devicePixelRatio || 1;
+  const cssW = innerWidth;
+  const cssH = innerHeight;
+  if(newDpr === dpr && cssW === viewWidth && cssH === viewHeight) return false;
+  dpr = newDpr;
+  viewWidth = cssW;
+  viewHeight = cssH;
   canvas.style.width = viewWidth + 'px';
   canvas.style.height = viewHeight + 'px';
-  canvas.width = Math.floor(viewWidth * dpr);
-  canvas.height = Math.floor(viewHeight * dpr);
+  canvas.width = Math.round(viewWidth * dpr);
+  canvas.height = Math.round(viewHeight * dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
   if(viewWidth < 720) safeMode = true;
-  rebuildGrid();
+  return true;
+}
+
+function resize(){
+  if(syncCanvas()) rebuildGrid();
 }
 
 function init(){
@@ -634,6 +638,7 @@ function rectIntersect(a,b){
 }
 
 function render(){
+  if(syncCanvas()) rebuildGrid();
   const camX = Math.round(world.camera.x*dpr)/dpr;
   const camY = Math.round(world.camera.y*dpr)/dpr;
   const bgOffset = Math.round(camX*0.2*dpr)/dpr;
@@ -672,11 +677,24 @@ function renderGrid(ctx, camera){
   let drawn = false;
   if(!gridEnabled || !gridSegments.length){ gridDrawnNow = false; return; }
   ctx.setTransform(1,0,0,1,-camera.x*dpr,-camera.y*dpr);
-  const viewStart = camera.x;
-  const viewEnd = camera.x + viewWidth;
+  const viewStartX = camera.x;
+  const viewEndX = camera.x + viewWidth;
+  const viewStartY = camera.y;
+  const viewEndY = camera.y + viewHeight;
   for(const seg of gridSegments){
-    if(seg.x + seg.w < viewStart || seg.x > viewEnd) continue;
-    ctx.drawImage(seg.canvas, seg.x*dpr, gridMinY*dpr);
+    const segEndX = seg.x + seg.w;
+    if(segEndX <= viewStartX || seg.x >= viewEndX) continue;
+    const drawStartX = Math.max(seg.x, viewStartX);
+    const drawEndX = Math.min(segEndX, viewEndX);
+    const srcX = drawStartX - seg.x;
+    const drawW = drawEndX - drawStartX;
+    const drawStartY = Math.max(gridMinY, viewStartY);
+    const drawEndY = Math.min(gridMaxY, viewEndY);
+    const srcY = drawStartY - gridMinY;
+    const drawH = drawEndY - drawStartY;
+    ctx.drawImage(seg.canvas,
+      srcX*dpr, srcY*dpr, drawW*dpr, drawH*dpr,
+      drawStartX*dpr, drawStartY*dpr, drawW*dpr, drawH*dpr);
     drawn = true;
   }
   gridDrawnNow = drawn;
@@ -817,11 +835,11 @@ function drawHUD(camX, camY){
     ctx.fillText(`v_avg: ${vAvg.toFixed(1)}px/s (${vAvgTiles.toFixed(2)}t/s)`,20,150);
     ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | Tile: 60px`,20,170);
     ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,190);
-    ctx.fillText(`Grid layer: ${gridDrawnPrev?'drawn':'not drawn'}`,20,210);
+    ctx.fillText(`DPR: ${dpr.toFixed(2)} | Grid: ${gridDrawnPrev?'drawn':'not'}`,20,210);
   }else{
     ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | Tile: 60px`,20,130);
     ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
-    ctx.fillText(`Grid layer: ${gridDrawnPrev?'drawn':'not drawn'}`,20,170);
+    ctx.fillText(`DPR: ${dpr.toFixed(2)} | Grid: ${gridDrawnPrev?'drawn':'not'}`,20,170);
   }
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
