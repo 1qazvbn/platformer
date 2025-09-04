@@ -82,7 +82,7 @@ let lastInputEvent = '';
 
 let inputHUD = false;
 
-const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
+const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, anchorY:0.70} };
 let worldStartX = 0, worldEndX = 0, worldMinY = 0, worldMaxY = 0, worldWidthPx = 0;
 let worldMode = 'detected';
 
@@ -644,14 +644,21 @@ function updateCamera(dt){
   const p = world.player;
   const vInst = p.vx*10;
   const lookAhead = Math.min(Math.max(Math.abs(vInst)*0.18,80),260) * p.dir;
-  const targetX = p.x + p.w/2 - viewWidth/2 + lookAhead;
-  const targetY = p.y + p.h/2 - viewHeight/2;
+  const anchorY = world.camera.anchorY || 0.5;
+  let targetX = p.x + p.w/2 - viewWidth/2 + lookAhead;
+  let targetY = p.y + p.h/2 - viewHeight*anchorY;
+  const maxCamX = Math.max(worldStartX, worldEndX - viewWidth);
+  const maxCamY = Math.max(worldMinY, worldMaxY - viewHeight);
+  targetX = Math.min(Math.max(targetX, worldStartX), maxCamX);
+  targetY = Math.min(Math.max(targetY, worldMinY), maxCamY);
   world.camera.x += (targetX - world.camera.x)*0.15;
   world.camera.y += (targetY - world.camera.y)*0.15;
   if(p.onGround){
     if(Math.abs(p.vx) < 0.05 && Math.abs(targetX - world.camera.x) < 0.5) world.camera.x = targetX;
     if(Math.abs(p.vy) < 0.05 && Math.abs(targetY - world.camera.y) < 0.5) world.camera.y = targetY;
   }
+  world.camera.x = Math.min(Math.max(world.camera.x, worldStartX), maxCamX);
+  world.camera.y = Math.min(Math.max(world.camera.y, worldMinY), maxCamY);
 }
 
 function rectIntersect(a,b){
@@ -864,9 +871,10 @@ function drawHUD(camX, camY){
     ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
   }
   ctx.fillText('Ground ΔY: +4 tiles',20,segment.done?210:170);
+  ctx.fillText(`Cam anchorY: ${world.camera.anchorY.toFixed(2)}`,20,segment.done?230:190);
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
-    const dbgY = segment.done?230:190;
+    const dbgY = segment.done?250:210;
     ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,dbgY);
     ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,dbgY+20);
     ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,dbgY+40);
