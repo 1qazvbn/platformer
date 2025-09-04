@@ -3,9 +3,16 @@ if(self.BOOT) self.BOOT.script = true;
 
 function asArray(v){ return Array.isArray(v)?v:[]; }
 
-let canvas, ctx, dpr=1, pageScale=1, eff=1, viewWidth=0, viewHeight=0, last=0, acc=0, fps=60, fpsTime=0, frameCount=0;
-const dt = 1/60;
+const VIRTUAL_WIDTH = 1440;
+const VIRTUAL_HEIGHT = 810;
 const tileSize = 60;
+
+let canvas, ctx;
+let dpr = 1, canvasScale = 1, offsetX = 0, offsetY = 0, eff = 1;
+let viewWidth = VIRTUAL_WIDTH, viewHeight = VIRTUAL_HEIGHT;
+let cssWidth = 0, cssHeight = 0;
+let last = 0, acc = 0, fps = 60, fpsTime = 0, frameCount = 0;
+const dt = 1/60;
 let safeMode = false;
 let score = 0;
 let isReady = false;
@@ -418,7 +425,7 @@ function rebuildGrid(){
   const height = maxY - minY;
   const baseThin = Math.ceil(eff) / eff;
   const baseBold = Math.ceil(2 * eff) / eff;
-  const key = [gridEnabled,step,tile,dpr,pageScale,startX,endX,minY,maxY].join('|');
+  const key = [gridEnabled,step,tile,dpr,canvasScale,startX,endX,minY,maxY].join('|');
   if(key === gridCacheKey) return;
   gridCacheKey = key;
   gridSegments = [];
@@ -486,6 +493,9 @@ function start(){
 
 function drawLoading(){
   if(isReady) return;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.setTransform(canvasScale*dpr,0,0,canvasScale*dpr,offsetX*dpr,offsetY*dpr);
   drawBackground(0);
   ctx.fillStyle = '#fff';
   ctx.font = '20px sans-serif';
@@ -498,21 +508,25 @@ if(window.visualViewport) window.visualViewport.addEventListener('resize', resiz
 
 function syncCanvas(){
   const newDpr = window.devicePixelRatio || 1;
-  const newPageScale = window.visualViewport ? window.visualViewport.scale : 1;
-  const cssW = innerWidth;
-  const cssH = innerHeight;
-  if(newDpr === dpr && newPageScale === pageScale && cssW === viewWidth && cssH === viewHeight) return false;
+  const newCssW = innerWidth;
+  const newCssH = innerHeight;
+  const newScale = Math.min(newCssW / VIRTUAL_WIDTH, newCssH / VIRTUAL_HEIGHT);
+  const newOffsetX = (newCssW - VIRTUAL_WIDTH * newScale) / 2;
+  const newOffsetY = (newCssH - VIRTUAL_HEIGHT * newScale) / 2;
+  if(newDpr === dpr && newScale === canvasScale && newCssW === cssWidth && newCssH === cssHeight) return false;
   dpr = newDpr;
-  pageScale = newPageScale;
-  eff = dpr * pageScale;
-  viewWidth = cssW;
-  viewHeight = cssH;
-  canvas.style.width = viewWidth + 'px';
-  canvas.style.height = viewHeight + 'px';
-  canvas.width = Math.round(viewWidth * dpr);
-  canvas.height = Math.round(viewHeight * dpr);
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  if(viewWidth < 720) safeMode = true;
+  canvasScale = newScale;
+  offsetX = newOffsetX;
+  offsetY = newOffsetY;
+  cssWidth = newCssW;
+  cssHeight = newCssH;
+  eff = dpr * canvasScale;
+  canvas.style.width = cssWidth + 'px';
+  canvas.style.height = cssHeight + 'px';
+  canvas.width = Math.round(cssWidth * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+  ctx.setTransform(canvasScale*dpr,0,0,canvasScale*dpr,offsetX*dpr,offsetY*dpr);
+  safeMode = cssWidth < 720 || cssHeight < 405;
   return true;
 }
 
@@ -909,14 +923,17 @@ function render(){
   const camX = snap(world.camera.x);
   const camY = snap(world.camera.y);
   const bgOffset = snap(camX*0.2);
-  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const sd = canvasScale * dpr;
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.setTransform(sd,0,0,sd,offsetX*dpr,offsetY*dpr);
   drawBackground(bgOffset);
   renderGrid(ctx, camX, camY);
-  ctx.setTransform(dpr,0,0,dpr,-camX*dpr,-camY*dpr);
+  ctx.setTransform(sd,0,0,sd,offsetX*dpr - camX*sd, offsetY*dpr - camY*sd);
   drawPlatforms();
   drawCoins();
   drawPlayer();
-  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.setTransform(sd,0,0,sd,offsetX*dpr,offsetY*dpr);
   if(deadZoneDebug){
     const offsetY = settings.framingTiles * tileSize;
     const anchorScreenY = viewHeight/2 - offsetY;
@@ -942,9 +959,9 @@ function drawBackground(offset){
   ctx.fillRect(0,0,w,h);
   if(!safeMode){
     ctx.fillStyle = '#a0d0ff';
-    const cloudOffset = Math.round(offset*0.3*dpr)/dpr;
+    const cloudOffset = Math.round(offset*0.3*eff)/eff;
     for(let i=0;i<3;i++){
-      const x = Math.round(((cloudOffset + i*200) % (w+200) -200)*dpr)/dpr;
+      const x = Math.round(((cloudOffset + i*200) % (w+200) -200)*eff)/eff;
       ctx.beginPath();
       ctx.arc(x,100+i*30,80,0,Math.PI*2);
       ctx.fill();
@@ -957,7 +974,8 @@ function renderGrid(ctx, camX, camY){
   if(!gridEnabled || !gridSegments.length){ gridDrawnNow = false; return; }
   const prevSmooth = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
-  ctx.setTransform(1,0,0,1,-camX*dpr,-camY*dpr);
+  const sd = canvasScale * dpr;
+  ctx.setTransform(sd,0,0,sd,offsetX*dpr - camX*sd, offsetY*dpr - camY*sd);
   const viewStartX = camX;
   const viewEndX = camX + viewWidth;
   const viewStartY = camY;
@@ -975,7 +993,7 @@ function renderGrid(ctx, camX, camY){
     const drawH = drawEndY - drawStartY;
     ctx.drawImage(seg.canvas,
       srcX*dpr, srcY*dpr, drawW*dpr, drawH*dpr,
-      drawStartX*dpr, drawStartY*dpr, drawW*dpr, drawH*dpr);
+      drawStartX, drawStartY, drawW, drawH);
     drawn = true;
   }
   ctx.imageSmoothingEnabled = prevSmooth;
@@ -1165,7 +1183,7 @@ function drawHUD(camX, camY){
     lines.push(`Cam targetY/desY/curY: ${tY} / ${dY} / ${cY} px`);
     const smoothMs = Math.round(dt/0.15*1000);
     lines.push(`Smooth: ${smoothMs} ms`);
-    lines.push(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStepStr} | DPR: ${dpr.toFixed(2)} | Zoom: ${pageScale.toFixed(2)} | eff: ${eff.toFixed(2)} | ${gridDrawnPrev?'drawn':'not'}`);
+    lines.push(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStepStr} | DPR: ${dpr.toFixed(2)} | Scale: ${canvasScale.toFixed(2)} | eff: ${eff.toFixed(2)} | ${gridDrawnPrev?'drawn':'not'}`);
   }
 
   let x = 20, y = 20;
