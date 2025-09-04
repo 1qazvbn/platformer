@@ -13,7 +13,7 @@ let debug = false;
 let paused = true;
 
 const DIFF_KEY = 'platformer.difficulty.v1';
-const DIFF_FACTORS = { Easy:1.00, Normal:1.10, Hard:1.20 };
+const DIFF_FACTORS = { Easy:1.00, Normal:1.30, Hard:1.60 };
 
 const base = {
   maxRunSpeed: 6.0 * 3.5, // allow up to ×4 if needed
@@ -380,7 +380,7 @@ function updateCoins(dt){
 function updateCamera(dt){
   const p = world.player;
   const vInst = p.vx*10;
-  const lookAhead = Math.min(Math.max(Math.abs(vInst)*0.18,80),220) * p.dir;
+  const lookAhead = Math.min(Math.max(Math.abs(vInst)*0.18,80),260) * p.dir;
   const targetX = p.x + p.w/2 - viewWidth/2 + lookAhead;
   const targetY = p.y + p.h/2 - viewHeight/2;
   world.camera.x += (targetX - world.camera.x)*0.15;
