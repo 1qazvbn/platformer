@@ -879,8 +879,13 @@ function updateCamera(dt){
   const minCamY = worldMinY;
   const maxCamY = Math.max(worldMinY, worldMaxY - viewHeight);
   let clampY = 'none';
-  if(camY < minCamY){ camY = minCamY; clampY = 'top'; }
-  else if(camY > maxCamY){ camY = maxCamY; clampY = 'bottom'; }
+  if(camY < minCamY){
+    camY = minCamY;
+    clampY = 'top';
+  }else if(camY > maxCamY && playerY <= worldMaxY){
+    camY = maxCamY;
+    clampY = 'bottom';
+  }
 
   world.camera.y = camY;
   world.camera.framingYTiles = settings.framingTiles;
