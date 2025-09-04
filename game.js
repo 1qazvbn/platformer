@@ -57,8 +57,19 @@ function randomYawnCooldown(){
 }
 
 const keys = {left:false,right:false,up:false};
+let move = 0;
+const AIR_DECEL = 0.98;
+const DEAD_ZONE = 0.5;
+
+let inputHUD = false;
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
+
+function resetInput(){
+  keys.left = keys.right = keys.up = false;
+  move = 0;
+  if(world.player) world.player.vx = 0;
+}
 
 let vMax = 0;
 const segment = {start:-400,end:800,startTime:0,delta:0,running:false,done:false};
@@ -118,17 +129,21 @@ function init(){
   // Input
   window.addEventListener('keydown',e=>{
     if(e.code==='F3'){ debug=!debug; e.preventDefault(); return; }
+    if(e.code==='F1'){ inputHUD=!inputHUD; e.preventDefault(); return; }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
     if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=true;
     if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=true;
     if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'){ keys.up=true; world.player.jumpBuffer=JUMP_BUFFER_MS; }
-    if(e.code==='KeyR'){ resetSegment(); }
+    if(e.code==='KeyR'){ resetSegment(); resetInput(); }
   });
   window.addEventListener('keyup',e=>{
     if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=false;
     if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=false;
     if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space') keys.up=false;
   });
+  window.addEventListener('blur', resetInput);
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden) resetInput(); });
+  ['touchend','touchcancel','touchleave'].forEach(ev=>window.addEventListener(ev, resetInput));
 
   // Level
   world.platforms = asArray([
@@ -156,6 +171,7 @@ function init(){
     yawnStretch:0,yawnTilt:0,longBlink:false,
     breathe:0,dir:1
   };
+  resetInput();
 }
 
 
@@ -236,11 +252,13 @@ function update(dt){
 
   // Input
   const accel = p.onGround ? RUN_ACCEL : AIR_ACCEL;
-  if(keys.left) { p.vx -= accel; p.dir=-1; }
-  if(keys.right){ p.vx += accel; p.dir=1; }
-  if(!keys.left && !keys.right && p.onGround){
-    p.vx*=RUN_DECEL;
-    if(Math.abs(p.vx) < 0.05) p.vx = 0;
+  move = (keys.right?1:0) - (keys.left?1:0);
+  if(move){
+    p.vx += move*accel;
+    p.dir = move > 0 ? 1 : -1;
+  }else{
+    p.vx *= p.onGround ? RUN_DECEL : AIR_DECEL;
+    if(Math.abs(p.vx) < DEAD_ZONE) p.vx = 0;
   }
 
   if(p.jumpBuffer>0 && (p.onGround || p.coyote>0)){
@@ -567,6 +585,9 @@ function drawHUD(camX, camY){
     ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,190);
     ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,210);
   }
+  if(inputHUD){
+    ctx.fillText(`L:${keys.left?1:0} R:${keys.right?1:0} move:${move} vx:${p.vx.toFixed(2)}`,20,viewHeight-40);
+  }
 }
 
 function setupMenu(){
@@ -579,19 +600,21 @@ function setupMenu(){
   const diffRadios = document.querySelectorAll('input[name="difficulty"]');
 
   const show = screen=>{
+    resetInput();
     mainMenu.classList.toggle('hidden', screen!=='main');
     settingsMenu.classList.toggle('hidden', screen!=='settings');
     menu.style.display='flex';
     paused = true;
   };
 
-  startBtn.addEventListener('click',()=>{ applyDifficulty(currentDifficulty); menu.style.display='none'; paused=false; });
+  startBtn.addEventListener('click',()=>{ applyDifficulty(currentDifficulty); resetInput(); menu.style.display='none'; paused=false; });
   settingsBtn.addEventListener('click',()=>show('settings'));
   backBtn.addEventListener('click',()=>show('main'));
 
   diffRadios.forEach(r=>r.addEventListener('change',e=>{
     currentDifficulty = e.target.value;
     localStorage.setItem(DIFF_KEY,currentDifficulty);
+    resetInput();
   }));
   const saved = document.querySelector(`input[name="difficulty"][value="${currentDifficulty}"]`);
   if(saved) saved.checked = true;
@@ -599,7 +622,7 @@ function setupMenu(){
   window.addEventListener('keydown',e=>{
     if(menu.style.display!=='none'){
       if(!mainMenu.classList.contains('hidden')){
-        if(e.code==='Enter'){ applyDifficulty(currentDifficulty); menu.style.display='none'; paused=false; e.preventDefault(); }
+        if(e.code==='Enter'){ applyDifficulty(currentDifficulty); resetInput(); menu.style.display='none'; paused=false; e.preventDefault(); }
       }else{
         if(e.code==='Escape'||e.code==='Backspace'){ show('main'); e.preventDefault(); }
       }
