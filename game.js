@@ -960,7 +960,11 @@ function render(){
   const bgOffset = snap(camX*0.2);
   const sd = canvasScale * dpr;
   ctx.setTransform(1,0,0,1,0,0);
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const g = ctx.createLinearGradient(0,0,0,canvas.height);
+  g.addColorStop(0,'#4a90e2');
+  g.addColorStop(1,'#87ceeb');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.setTransform(sd,0,0,sd,offsetX*dpr,offsetY*dpr);
   drawBackground(bgOffset);
   renderGrid(ctx, camX, camY);
