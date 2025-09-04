@@ -6,12 +6,19 @@ let canvas, ctx, last=0, acc=0, fps=60, fpsTime=0, frameCount=0;
 const dt = 1/60;
 let safeMode = false;
 let score = 0;
+let isReady = false;
+let loader = null;
 
 const keys = {left:false,right:false,up:false};
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0,shake:0,shakeTime:0} };
 
 function showError(err){
+  if(loader) loader.style.display = 'none';
+  else{
+    const l = document.getElementById('loading-screen');
+    if(l) l.style.display = 'none';
+  }
   const o = document.getElementById('error-overlay');
   o.textContent = (err && err.stack) || err;
   o.style.display = 'block';
@@ -24,9 +31,8 @@ function start(){
   canvas = document.getElementById('game');
   ctx = canvas.getContext('2d');
   resize();
+  loader = document.getElementById('loading-screen');
   drawLoading();
-  const l=document.getElementById('loading-screen');
-  if(l) l.remove();
   try{
     init();
     last = performance.now();
@@ -35,6 +41,7 @@ function start(){
 }
 
 function drawLoading(){
+  if(isReady) return;
   drawBackground(0);
   ctx.fillStyle = '#fff';
   ctx.font = '20px sans-serif';
@@ -101,6 +108,10 @@ function loop(t){
     if(t - fpsTime > 1000){ fps = frameCount; frameCount=0; fpsTime=t; if(fps<30) safeMode=true; }
     while(acc>dt){ update(dt); acc-=dt; }
     render();
+    if(!isReady){
+      isReady = true;
+      if(loader) loader.style.display = 'none';
+    }
     requestAnimationFrame(loop);
   }catch(e){ showError(e); }
 }
