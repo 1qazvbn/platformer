@@ -26,9 +26,11 @@ const DIFF_KEY = 'platformer.difficulty.v1';
 // Difficulty multipliers relative to Easy base values
 const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
 
-const FRAMING_KEY = 'platformer.camera.framing.v1';
-let FRAMING_Y_TILES = parseInt(localStorage.getItem(FRAMING_KEY),10);
-if(!(FRAMING_Y_TILES>=3 && FRAMING_Y_TILES<=8)) FRAMING_Y_TILES = 5;
+const SETTINGS_FRAMING_KEY = 'platformer:framingTiles';
+const settings = {
+  framingTiles: parseInt(localStorage.getItem(SETTINGS_FRAMING_KEY), 10)
+};
+if(!(settings.framingTiles >= 0 && settings.framingTiles <= 8)) settings.framingTiles = 5;
 
 const base = {
   maxRunSpeed: 6.0 * 3.5 * 2.20, // rebased from previous Hard
@@ -91,7 +93,7 @@ let lastInputEvent = '';
 
 let inputHUD = false;
 
-const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, framingYTiles:FRAMING_Y_TILES, targetY:0, desiredY:0, clampY:'none', appliedOffsetY:0} };
+const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, framingYTiles:settings.framingTiles, targetY:0, desiredY:0, clampY:'none', appliedOffsetY:0} };
 let worldStartX = 0, worldEndX = 0, worldMinY = 0, worldMaxY = 0, worldWidthPx = 0;
 let worldMode = 'detected';
 
@@ -520,8 +522,8 @@ function init(){
     if(e.code==='F1'){ inputHUD=!inputHUD; e.preventDefault(); return; }
     if(e.code==='F2'){ toggleGrid(); e.preventDefault(); return; }
     if(e.code==='F4'){ toggleGridStep(); e.preventDefault(); return; }
-    if(e.code==='BracketLeft'){ world.camera.framingYTiles=Math.max(3,world.camera.framingYTiles-1); FRAMING_Y_TILES=world.camera.framingYTiles; localStorage.setItem(FRAMING_KEY,world.camera.framingYTiles); e.preventDefault(); return; }
-    if(e.code==='BracketRight'){ world.camera.framingYTiles=Math.min(8,world.camera.framingYTiles+1); FRAMING_Y_TILES=world.camera.framingYTiles; localStorage.setItem(FRAMING_KEY,world.camera.framingYTiles); e.preventDefault(); return; }
+    if(e.code==='BracketLeft'){ settings.framingTiles=Math.max(0,settings.framingTiles-1); world.camera.framingYTiles=settings.framingTiles; localStorage.setItem(SETTINGS_FRAMING_KEY,settings.framingTiles); e.preventDefault(); return; }
+    if(e.code==='BracketRight'){ settings.framingTiles=Math.min(8,settings.framingTiles+1); world.camera.framingYTiles=settings.framingTiles; localStorage.setItem(SETTINGS_FRAMING_KEY,settings.framingTiles); e.preventDefault(); return; }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
     if(e.code==='ArrowLeft'||e.code==='KeyA') keyLeft=true;
     if(e.code==='ArrowRight'||e.code==='KeyD') keyRight=true;
@@ -596,6 +598,7 @@ function loop(t){
     if(t - fpsTime > 1000){ fps = frameCount; frameCount=0; fpsTime=t; if(fps<30) safeMode=true; }
     let steps=0; while(acc >= dt && steps < 5){ update(dt); acc-=dt; steps++; }
     if(acc>dt) acc=dt;
+    updateCamera();
     render();
     if(!isReady){
       isReady = true;
@@ -716,7 +719,6 @@ function update(dt){
   if(p.onGround) p.releaseCut=false;
   if(!moveAxis && Math.abs(p.vx) < STOP_EPS) p.vx = 0;
   updateCoins(dt);
-  updateCamera(dt);
 
   const vInst = Math.abs(p.vx*10);
   if(vInst > vMax) vMax = vInst;
@@ -834,37 +836,37 @@ function updateCoins(dt){
   }
 }
 
-function updateCamera(dt){
+function updateCamera(){
   const p = world.player;
-  const vInst = p.vx*10;
-  const lookAhead = Math.min(Math.max(Math.abs(vInst)*0.18,80),260) * p.dir;
-  const framingTiles = FRAMING_Y_TILES;
-  world.camera.framingYTiles = framingTiles;
-  const desiredScreenY = viewHeight - framingTiles * tileSize;
-  let targetX = p.x + p.w/2 - viewWidth/2 + lookAhead;
-  let targetY = p.y + p.h/2 - desiredScreenY;
+  if(!p) return;
+  const targetX = p.x + p.w/2;
+  const targetY = p.y + p.h/2;
+  const offsetY = settings.framingTiles * tileSize;
+  const desiredX = targetX - viewWidth/2;
+  const desiredY = targetY - (viewHeight/2 - offsetY);
+  const minCamX = worldStartX;
   const maxCamX = Math.max(worldStartX, worldEndX - viewWidth);
+  const minCamY = worldMinY;
   const maxCamY = Math.max(worldMinY, worldMaxY - viewHeight);
-  const targetYRaw = targetY;
-  if(targetX < worldStartX) targetX = worldStartX;
-  else if(targetX > maxCamX) targetX = maxCamX;
+  let camX = desiredX;
+  let camY = desiredY;
   let clampY = 'none';
-  if(targetY < worldMinY){ targetY = worldMinY; clampY = 'top'; }
-  else if(targetY > maxCamY){ targetY = maxCamY; clampY = 'bottom'; }
-  world.camera.targetY = targetYRaw;
-  world.camera.desiredY = targetY;
+  if(camY < minCamY){ camY = minCamY; clampY = 'top'; }
+  else if(camY > maxCamY){ camY = maxCamY; clampY = 'bottom'; }
+  camX = Math.min(Math.max(camX, minCamX), maxCamX);
+  world.camera.framingYTiles = settings.framingTiles;
+  world.camera.targetY = targetY;
+  world.camera.desiredY = camY;
   world.camera.clampY = clampY;
-  const actualScreenY = p.y + p.h/2 - targetY;
-  const applied = actualScreenY - desiredScreenY;
-  world.camera.appliedOffsetY = Math.round(applied);
-  world.camera.x += (targetX - world.camera.x)*0.15;
-  world.camera.y += (targetY - world.camera.y)*0.15;
-  if(p.onGround){
-    if(Math.abs(p.vx) < 0.05 && Math.abs(targetX - world.camera.x) < 0.5) world.camera.x = targetX;
-    if(Math.abs(p.vy) < 0.05 && Math.abs(targetY - world.camera.y) < 0.5) world.camera.y = targetY;
-  }
-  world.camera.x = Math.min(Math.max(world.camera.x, worldStartX), maxCamX);
-  world.camera.y = Math.min(Math.max(world.camera.y, worldMinY), maxCamY);
+  world.camera.x += (camX - world.camera.x) * 0.15;
+  world.camera.y += (camY - world.camera.y) * 0.15;
+  if(Math.abs(camX - world.camera.x) < 0.5) world.camera.x = camX;
+  if(Math.abs(camY - world.camera.y) < 0.5) world.camera.y = camY;
+  world.camera.x = Math.min(Math.max(world.camera.x, minCamX), maxCamX);
+  world.camera.y = Math.min(Math.max(world.camera.y, minCamY), maxCamY);
+  const screenY = targetY - world.camera.y;
+  const applied = Math.round(viewHeight/2 - screenY);
+  world.camera.appliedOffsetY = applied;
 }
 
 function rectIntersect(a,b){
@@ -1060,14 +1062,19 @@ function getGroundY(p){
 
 function drawHUD(camX, camY){
   ctx.save();
-  ctx.fillStyle = '#111';
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = 1;
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+  ctx.lineWidth = 3;
   ctx.font = '14px monospace';
   ctx.textBaseline = 'top';
   const p = world.player;
+  const state = paused ? 'MENU' : 'PLAY';
+  const tiles = world.camera.framingYTiles || 0;
+  const offPix = Math.round(world.camera.appliedOffsetY || 0);
+  const clamp = world.camera.clampY || 'none';
+  const camLine = `State: ${state} | Framing: tiles=${tiles}, offY=${offPix}, clamp=${clamp} | Cam: x=${Math.round(world.camera.x)}, y=${Math.round(world.camera.y)} | Player: x=${Math.round(p.x)}, y=${Math.round(p.y)}`;
 
-  const lines = [];
+  const lines = [camLine];
   lines.push('Coins: '+score);
   lines.push('Arrows/A,D move • W/↑/Space jump • R reset timer');
   const diffFactor = DIFF_FACTORS[currentDifficulty];
@@ -1090,10 +1097,6 @@ function drawHUD(camX, camY){
   const ctxT = ((camX + viewWidth/2)/tileSize).toFixed(1).padStart(4,' ');
   const ctyT = ((camY + viewHeight/2)/tileSize).toFixed(1).padStart(4,' ');
   lines.push(`C x=${cx} px (t=${ctxT}) y=${cy} px (t=${ctyT})`);
-  const tiles = world.camera.framingYTiles || 0;
-  const offPix = Math.round(world.camera.appliedOffsetY || 0);
-  let clamp = world.camera.clampY || 'none';
-  if(clamp==='bottom') clamp='bot';
   lines.push(`Framing: tiles=${tiles} (offY=${offPix}px, clamp=${clamp})`);
 
   if(hudExtended){
@@ -1190,9 +1193,9 @@ function setupMenu(){
 
   framingRadios.forEach(r=>r.addEventListener('change',e=>{
     const v = parseInt(e.target.value,10);
+    settings.framingTiles = v;
     world.camera.framingYTiles = v;
-    FRAMING_Y_TILES = v;
-    localStorage.setItem(FRAMING_KEY,v);
+    localStorage.setItem(SETTINGS_FRAMING_KEY,v);
   }));
   const savedFraming = document.querySelector(`input[name="framing"][value="${world.camera.framingYTiles}"]`);
   if(savedFraming) savedFraming.checked = true;
