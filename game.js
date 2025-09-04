@@ -87,6 +87,8 @@ let worldMode = 'detected';
 
 let gridSegments = [];
 let gridMinY = 0;
+let gridDrawnPrev = false;
+let gridDrawnNow = false;
 
 function resetInput(release=false){
   keyLeft = keyRight = upHeld = false;
@@ -196,12 +198,13 @@ function rebuildGrid(){
   const startX = Math.floor(worldStartX/(step*tile))*step*tile;
   const endX = Math.ceil(worldEndX/(step*tile))*step*tile;
   worldWidthPx = endX - startX;
-  const FALLBACK_SPAN_TILES = 1440;
-  const pad = 720 * tile;
+  const fallbackTiles = 720;
+  const padTiles = Math.max(fallbackTiles, Math.ceil((viewHeight/ tile) * 1.5));
+  const pad = padTiles * tile;
   let minY = worldMinY - pad;
   let maxY = worldMaxY + pad;
-  const needed = FALLBACK_SPAN_TILES * tile;
-  if(maxY - minY < needed){
+  const needed = 1440 * tile;
+  if((maxY - minY) < needed){
     const extra = (needed - (maxY - minY)) / 2;
     minY -= extra;
     maxY += extra;
@@ -220,39 +223,35 @@ function rebuildGrid(){
     const g = canvas.getContext('2d');
     g.scale(dpr,dpr);
     g.translate(-sx,-minY);
-    g.font = '10px sans-serif';
+    g.font = `${10/dpr}px sans-serif`;
     g.textBaseline = 'top';
     const vxStart = Math.ceil(sx/(step*tile))*step*tile;
     for(let x=vxStart; x<=sx+segW; x+=step*tile){
       const idx = Math.round(x/tile);
       const major = idx%10===0;
-      g.strokeStyle = major?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.1)';
-      g.lineWidth = major?1.5:1;
-      const lx = Math.round(x)+0.5;
+      g.strokeStyle = major?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.18)';
+      g.lineWidth = (major?2:1)/dpr;
+      const lx = (Math.round(x*dpr)+0.5)/dpr;
       g.beginPath();
       g.moveTo(lx,minY);
       g.lineTo(lx,maxY);
       g.stroke();
       if(major){
-        g.fillStyle='rgba(255,255,255,0.3)';
-        g.fillText(idx,x+2,minY+2);
+        g.fillStyle='rgba(255,255,255,0.35)';
+        g.fillText(idx, lx+2/dpr, minY+2/dpr);
       }
     }
     const hyStart = Math.ceil(minY/(step*tile))*step*tile;
     for(let y=hyStart; y<=maxY; y+=step*tile){
       const idx = Math.round(y/tile);
       const major = idx%10===0;
-      g.strokeStyle = major?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.1)';
-      g.lineWidth = major?1.5:1;
-      const ly = Math.round(y)+0.5;
+      g.strokeStyle = major?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.18)';
+      g.lineWidth = (major?2:1)/dpr;
+      const ly = (Math.round(y*dpr)+0.5)/dpr;
       g.beginPath();
       g.moveTo(sx,ly);
       g.lineTo(sx+segW,ly);
       g.stroke();
-      if(major && sx===startX){
-        g.fillStyle='rgba(255,255,255,0.3)';
-        g.fillText(idx,startX+2,y+2);
-      }
     }
     gridSegments.push({canvas,x:sx,w:segW});
   }
@@ -640,13 +639,14 @@ function render(){
   const bgOffset = Math.round(camX*0.2*dpr)/dpr;
   ctx.setTransform(dpr,0,0,dpr,0,0);
   drawBackground(bgOffset);
+  renderGrid(ctx, world.camera);
   ctx.setTransform(dpr,0,0,dpr,-camX*dpr,-camY*dpr);
-  drawGrid(camX, camY);
   drawPlatforms();
   drawCoins();
   drawPlayer();
   ctx.setTransform(dpr,0,0,dpr,0,0);
   drawHUD(camX, camY);
+  gridDrawnPrev = gridDrawnNow;
 }
 
 function drawBackground(offset){
@@ -668,14 +668,18 @@ function drawBackground(offset){
   }
 }
 
-function drawGrid(camX, camY){
-  if(!gridEnabled || !gridSegments.length) return;
-  const viewStart = camX;
-  const viewEnd = camX + viewWidth;
+function renderGrid(ctx, camera){
+  let drawn = false;
+  if(!gridEnabled || !gridSegments.length){ gridDrawnNow = false; return; }
+  ctx.setTransform(1,0,0,1,-camera.x*dpr,-camera.y*dpr);
+  const viewStart = camera.x;
+  const viewEnd = camera.x + viewWidth;
   for(const seg of gridSegments){
     if(seg.x + seg.w < viewStart || seg.x > viewEnd) continue;
-    ctx.drawImage(seg.canvas, seg.x, gridMinY);
+    ctx.drawImage(seg.canvas, seg.x*dpr, gridMinY*dpr);
+    drawn = true;
   }
+  gridDrawnNow = drawn;
 }
 
 function drawPlatform(pl){
@@ -813,13 +817,15 @@ function drawHUD(camX, camY){
     ctx.fillText(`v_avg: ${vAvg.toFixed(1)}px/s (${vAvgTiles.toFixed(2)}t/s)`,20,150);
     ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | Tile: 60px`,20,170);
     ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,190);
+    ctx.fillText(`Grid layer: ${gridDrawnPrev?'drawn':'not drawn'}`,20,210);
   }else{
     ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | Tile: 60px`,20,130);
     ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
+    ctx.fillText(`Grid layer: ${gridDrawnPrev?'drawn':'not drawn'}`,20,170);
   }
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
-    const dbgY = segment.done?210:170;
+    const dbgY = segment.done?230:190;
     ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,dbgY);
     ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,dbgY+20);
     ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,dbgY+40);
