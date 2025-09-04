@@ -616,6 +616,12 @@ function init(){
     {x:520,y:250,w:150,h:20},
     {x:710,y:180,w:120,h:20}
   ]);
+  const ground = world.platforms[0];
+  const baseTiles = ground.w / tileSize;
+  const extendLeftTiles = 2 * baseTiles;
+  const extendRightTiles = 10 * baseTiles;
+  ground.x -= extendLeftTiles * tileSize;
+  ground.w += (extendLeftTiles + extendRightTiles) * tileSize;
   world.coins = asArray([
     {x:230,y:190,t:0,collected:false},
     {x:410,y:120,t:0,collected:false},
