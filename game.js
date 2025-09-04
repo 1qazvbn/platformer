@@ -1064,48 +1064,68 @@ function drawHUD(camX, camY){
   ctx.shadowOffsetX = 1;
   ctx.shadowOffsetY = 1;
   const p = world.player;
-  let x = 20, y = 20;
+
+  const lines = [];
+  lines.push('Coins: '+score);
+  lines.push('Arrows/A,D move • W/↑/Space jump • R reset timer');
+  const diffFactor = DIFF_FACTORS[currentDifficulty];
+  lines.push(`Diff: ${currentDifficulty} (×${diffFactor.toFixed(2)})`);
+  const vInst = Math.abs(p.vx*10);
+  const vTiles = vInst/60;
+  lines.push(`v_inst: ${vInst.toFixed(1)}px/s (${vTiles.toFixed(2)}t/s) v_max: ${vMax.toFixed(1)}px/s`);
+  const gridStepStr = gridStep===5?'5×5':'1×1';
+  lines.push(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStepStr} | Tile: ${tileSize}px`);
+  const worldTiles = Math.round(worldWidthPx/60);
+  lines.push(`World: ${worldTiles} tiles (${worldMode})`);
+
   const px = Math.round(p.x).toString().padStart(4,' ');
   const py = Math.round(p.y).toString().padStart(4,' ');
   const ptx = (p.x/tileSize).toFixed(1).padStart(4,' ');
   const pty = (p.y/tileSize).toFixed(1).padStart(4,' ');
-  ctx.fillText(`P x=${px} px (t=${ptx}) y=${py} px (t=${pty})`,x,y); y+=18;
+  lines.push(`P x=${px} px (t=${ptx}) y=${py} px (t=${pty})`);
   const cx = Math.round(camX + viewWidth/2).toString().padStart(4,' ');
   const cy = Math.round(camY + viewHeight/2).toString().padStart(4,' ');
   const ctxT = ((camX + viewWidth/2)/tileSize).toFixed(1).padStart(4,' ');
   const ctyT = ((camY + viewHeight/2)/tileSize).toFixed(1).padStart(4,' ');
-  ctx.fillText(`C x=${cx} px (t=${ctxT}) y=${cy} px (t=${ctyT})`,x,y); y+=18;
+  lines.push(`C x=${cx} px (t=${ctxT}) y=${cy} px (t=${ctyT})`);
   const offY = world.camera.framingYOffsetTiles || 0;
   const appliedY = world.camera.appliedYOffsetTiles || 0;
   const offStr = (offY>=0?'+':'')+offY+'t';
   const applStr = (appliedY>=0?'+':'')+appliedY.toFixed(1)+'t';
   const clamp = world.camera.clampY || 'none';
-  ctx.fillText(`Framing offY=${offStr} applied=${applStr} clampY=${clamp}`,x,y); y+=18;
+  lines.push(`Framing offY=${offStr} applied=${applStr} clampY=${clamp}`);
+
   if(hudExtended){
     const viewW = viewWidth.toString().padStart(3,' ');
     const viewH = viewHeight.toString().padStart(3,' ');
     const viewWT = (viewWidth/tileSize).toFixed(1).padStart(4,' ');
     const viewHT = (viewHeight/tileSize).toFixed(1).padStart(4,' ');
-    ctx.fillText(`View w×h: ${viewW}×${viewH} px (${viewWT}×${viewHT} t)`,x,y); y+=18;
+    lines.push(`View w×h: ${viewW}×${viewH} px (${viewWT}×${viewHT} t)`);
     const boundL = Math.round(worldStartX).toString().padStart(4,' ');
     const boundR = Math.round(worldEndX - viewWidth).toString().padStart(4,' ');
     const boundT = Math.round(worldMinY).toString().padStart(4,' ');
     const boundB = Math.round(worldMaxY - viewHeight).toString().padStart(4,' ');
-    ctx.fillText(`Cam bounds L/R/T/B: ${boundL}/${boundR}/${boundT}/${boundB} px`,x,y); y+=18;
+    lines.push(`Cam bounds L/R/T/B: ${boundL}/${boundR}/${boundT}/${boundB} px`);
     const wMin = Math.round(worldMinY).toString().padStart(4,' ');
     const wMax = Math.round(worldMaxY).toString().padStart(4,' ');
     const wMinT = (worldMinY/tileSize).toFixed(1).padStart(4,' ');
     const wMaxT = (worldMaxY/tileSize).toFixed(1).padStart(4,' ');
-    ctx.fillText(`World Y min/max: ${wMin} / ${wMax} px (${wMinT} / ${wMaxT} t)`,x,y); y+=18;
+    lines.push(`World Y min/max: ${wMin} / ${wMax} px (${wMinT} / ${wMaxT} t)`);
     const tY = Math.round(world.camera.targetY||0).toString().padStart(4,' ');
     const dY = Math.round(world.camera.desiredY||0).toString().padStart(4,' ');
     const cY = Math.round(world.camera.y).toString().padStart(4,' ');
-    ctx.fillText(`Cam targetY/desY/curY: ${tY} / ${dY} / ${cY} px`,x,y); y+=18;
+    lines.push(`Cam targetY/desY/curY: ${tY} / ${dY} / ${cY} px`);
     const smoothMs = Math.round(dt/0.15*1000);
-    ctx.fillText(`Smooth: ${smoothMs} ms`,x,y); y+=18;
-    const gridStepStr = gridStep===5?'5×5':'1×1';
-    ctx.fillText(`Grid: ${gridEnabled?'on':'off'} step: ${gridStepStr} tile: ${tileSize} px`,x,y); y+=18;
+    lines.push(`Smooth: ${smoothMs} ms`);
+    lines.push(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStepStr} | DPR: ${dpr.toFixed(2)} | Zoom: ${pageScale.toFixed(2)} | eff: ${eff.toFixed(2)} | ${gridDrawnPrev?'drawn':'not'}`);
   }
+
+  let x = 20, y = 20;
+  for(const line of lines){
+    ctx.fillText(line, x, y);
+    y += 18;
+  }
+
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(inputHUD){
     ctx.fillText(`L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${p.vx.toFixed(2)} last:${lastInputEvent}`,20,viewHeight-40);
