@@ -28,12 +28,12 @@ const DIFF_KEY = 'platformer.difficulty.v1';
 const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
 
 const settings = {
-  framingTiles: -5,
+  framingTiles: -3.75,
   camera: {
     followY: true,
-    deadzoneUpTiles: 1.0,
-    deadzoneDownTiles: 2.0,
-    lerpPerSec: 8.0
+    deadzoneUpTiles: 6.0,
+    deadzoneDownTiles: 1.0,
+    lerpPerSec: 10.0
   }
 };
 
@@ -1116,7 +1116,7 @@ function drawHUD(camX, camY){
   const offPix = Math.round(world.camera.appliedOffsetY || 0);
   const clamp = world.camera.clampY || 'none';
   const camLine = `State: ${state} | Framing: tiles=${tiles}, offY=${offPix}, clamp=${clamp} | Cam: x=${Math.round(world.camera.x)}, y=${Math.round(world.camera.y)} | Player: x=${Math.round(p.x)}, y=${Math.round(p.y)}`;
-  const camYInfo = `CamY: y=${Math.round(world.camera.y)} anchorY=${Math.round(world.camera.anchorY||0)} dzUp=${Math.round(world.camera.dzUp||0)} dzDn=${Math.round(world.camera.dzDown||0)} dY=${Math.round((p.y+p.h/2)-(world.camera.anchorY||0))}`;
+  const camYInfo = `CamY: y=${Math.round(world.camera.y)} anchorY=${Math.round(world.camera.anchorY||0)} upDZ=${Math.round(world.camera.dzUp||0)} dnDZ=${Math.round(world.camera.dzDown||0)} clamp=${world.camera.clampY||'none'}`;
 
   const lines = [camLine, camYInfo];
   lines.push('Coins: '+score);
