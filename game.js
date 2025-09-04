@@ -1349,17 +1349,29 @@ function drawHUD(){
   const offPix = Math.round(world.camera.appliedOffsetY || 0);
   const clamp = world.camera.clampY || 'none';
   const camY = Math.round(world.camera.y);
-  const line = `Framing: tiles=${tiles} | offY=${offPix} | clampY=${clamp} | CamY=${camY}`;
+  const camX = Math.round(world.camera.x);
+  const camCenterX = Math.round(world.camera.x + viewWidth/2);
+  const camCenterTX = ((world.camera.x + viewWidth/2)/tileSize).toFixed(1);
+  const clampX = (camX <= Math.round(worldStartX)) ? 'left' :
+    (camX >= Math.round(Math.max(worldStartX, worldEndX - viewWidth)) ? 'right' : 'none');
+  const line = `Framing: tiles=${tiles} | offY=${offPix} | clampY=${clamp} | CamY=${camY} | CamX=${camCenterX} (t=${camCenterTX}) | clampX=${clampX}`;
   ctx.strokeText(line, 20, 20);
   ctx.fillText(line, 20, 20);
+
+  const camLine = `C x=${camCenterX} px (t=${camCenterTX})`;
+  const player = world.player;
+  const playerLine = `P x=${Math.round(player.x)} px (t=${(player.x/tileSize).toFixed(1)})`;
+  ctx.strokeText(camLine, 20, 40);
+  ctx.fillText(camLine, 20, 40);
+  ctx.strokeText(playerLine, 20, 60);
+  ctx.fillText(playerLine, 20, 60);
 
   const ver = 'v'+GAME_VERSION;
   ctx.strokeText(ver, viewWidth-80, viewHeight-20);
   ctx.fillText(ver, viewWidth-80, viewHeight-20);
 
   if(inputHUD){
-    const p = world.player;
-    const inputLine = `L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${p.vx.toFixed(2)} last:${lastInputEvent}`;
+    const inputLine = `L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${player.vx.toFixed(2)} last:${lastInputEvent}`;
     ctx.strokeText(inputLine,20,viewHeight-40);
     ctx.fillText(inputLine,20,viewHeight-40);
   }
