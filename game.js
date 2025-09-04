@@ -10,7 +10,8 @@ let safeMode = false;
 let score = 0;
 let isReady = false;
 let loader = null;
-let debug = false;
+const HUD_EXT_KEY = 'platformer.debug.hud.extended';
+let hudExtended = localStorage.getItem(HUD_EXT_KEY) === 'true';
 let paused = true;
 
 const GRID_ENABLED_KEY = 'platformer.debug.grid.enabled';
@@ -90,7 +91,7 @@ let lastInputEvent = '';
 
 let inputHUD = false;
 
-const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, framingYOffsetTiles} };
+const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, framingYOffsetTiles, targetY:0, desiredY:0, clampY:'none', appliedYOffsetTiles:0} };
 let worldStartX = 0, worldEndX = 0, worldMinY = 0, worldMaxY = 0, worldWidthPx = 0;
 let worldMode = 'detected';
 
@@ -515,7 +516,7 @@ function resize(){
 function init(){
   // Input
   window.addEventListener('keydown',e=>{
-    if(e.code==='F3'){ debug=!debug; e.preventDefault(); return; }
+    if(e.code==='F3'){ hudExtended=!hudExtended; localStorage.setItem(HUD_EXT_KEY,hudExtended); e.preventDefault(); return; }
     if(e.code==='F1'){ inputHUD=!inputHUD; e.preventDefault(); return; }
     if(e.code==='F2'){ toggleGrid(); e.preventDefault(); return; }
     if(e.code==='F4'){ toggleGridStep(); e.preventDefault(); return; }
@@ -835,13 +836,24 @@ function updateCamera(dt){
   const p = world.player;
   const vInst = p.vx*10;
   const lookAhead = Math.min(Math.max(Math.abs(vInst)*0.18,80),260) * p.dir;
-  const offset = (world.camera.framingYOffsetTiles || 0) * tileSize;
+  const offsetTiles = world.camera.framingYOffsetTiles || 0;
+  const offset = offsetTiles * tileSize;
   let targetX = p.x + p.w/2 - viewWidth/2 + lookAhead;
   let targetY = p.y + p.h/2 - viewHeight*0.5 - offset;
   const maxCamX = Math.max(worldStartX, worldEndX - viewWidth);
   const maxCamY = Math.max(worldMinY, worldMaxY - viewHeight);
-  targetX = Math.min(Math.max(targetX, worldStartX), maxCamX);
-  targetY = Math.min(Math.max(targetY, worldMinY), maxCamY);
+  const targetYRaw = targetY;
+  if(targetX < worldStartX) targetX = worldStartX;
+  else if(targetX > maxCamX) targetX = maxCamX;
+  let clampY = 'none';
+  if(targetY < worldMinY){ targetY = worldMinY; clampY = 'top'; }
+  else if(targetY > maxCamY){ targetY = maxCamY; clampY = 'bottom'; }
+  world.camera.targetY = targetYRaw;
+  world.camera.desiredY = targetY;
+  world.camera.clampY = clampY;
+  const baseY = p.y + p.h/2 - viewHeight*0.5;
+  const applied = baseY - targetY;
+  world.camera.appliedYOffsetTiles = Math.round(applied/tileSize*10)/10;
   world.camera.x += (targetX - world.camera.x)*0.15;
   world.camera.y += (targetY - world.camera.y)*0.15;
   if(p.onGround){
@@ -1044,44 +1056,61 @@ function getGroundY(p){
 }
 
 function drawHUD(camX, camY){
+  ctx.save();
   ctx.fillStyle = '#fff';
-  ctx.font = '16px sans-serif';
-  ctx.fillText('Coins: '+score,20,30);
-  ctx.fillText('Arrows/A,D move • W/↑/Space jump • R reset timer',20,50);
-  const diffFactor = DIFF_FACTORS[currentDifficulty];
-  ctx.fillText(`Diff: ${currentDifficulty} (x${diffFactor.toFixed(2)})`,20,70);
+  ctx.font = '14px monospace';
+  ctx.textBaseline = 'top';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowOffsetX = 1;
+  ctx.shadowOffsetY = 1;
   const p = world.player;
-  const vInst = p.vx*10;
-  const vTiles = vInst/60;
-  ctx.fillText(`v_inst: ${vInst.toFixed(1)}px/s (${vTiles.toFixed(2)}t/s)`,20,90);
-  ctx.fillText(`v_max: ${vMax.toFixed(1)}px/s`,20,110);
-  const worldTiles = Math.round(worldWidthPx/60);
-  if(segment.done){
-    const vAvg = 1200/segment.delta;
-    const vAvgTiles = vAvg/60;
-    ctx.fillText(`Δt: ${segment.delta.toFixed(2)}s`,20,130);
-    ctx.fillText(`v_avg: ${vAvg.toFixed(1)}px/s (${vAvgTiles.toFixed(2)}t/s)`,20,150);
-    ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | DPR: ${dpr.toFixed(2)} | Zoom: ${pageScale.toFixed(2)} | eff: ${eff.toFixed(2)} | ${gridDrawnPrev?'drawn':'not'}`,20,170);
-    ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,190);
-  }else{
-    ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | DPR: ${dpr.toFixed(2)} | Zoom: ${pageScale.toFixed(2)} | eff: ${eff.toFixed(2)} | ${gridDrawnPrev?'drawn':'not'}`,20,130);
-  ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
+  let x = 20, y = 20;
+  const px = Math.round(p.x).toString().padStart(4,' ');
+  const py = Math.round(p.y).toString().padStart(4,' ');
+  const ptx = (p.x/tileSize).toFixed(1).padStart(4,' ');
+  const pty = (p.y/tileSize).toFixed(1).padStart(4,' ');
+  ctx.fillText(`P x=${px} px (t=${ptx}) y=${py} px (t=${pty})`,x,y); y+=18;
+  const cx = Math.round(camX + viewWidth/2).toString().padStart(4,' ');
+  const cy = Math.round(camY + viewHeight/2).toString().padStart(4,' ');
+  const ctxT = ((camX + viewWidth/2)/tileSize).toFixed(1).padStart(4,' ');
+  const ctyT = ((camY + viewHeight/2)/tileSize).toFixed(1).padStart(4,' ');
+  ctx.fillText(`C x=${cx} px (t=${ctxT}) y=${cy} px (t=${ctyT})`,x,y); y+=18;
+  const offY = world.camera.framingYOffsetTiles || 0;
+  const appliedY = world.camera.appliedYOffsetTiles || 0;
+  const offStr = (offY>=0?'+':'')+offY+'t';
+  const applStr = (appliedY>=0?'+':'')+appliedY.toFixed(1)+'t';
+  const clamp = world.camera.clampY || 'none';
+  ctx.fillText(`Framing offY=${offStr} applied=${applStr} clampY=${clamp}`,x,y); y+=18;
+  if(hudExtended){
+    const viewW = viewWidth.toString().padStart(3,' ');
+    const viewH = viewHeight.toString().padStart(3,' ');
+    const viewWT = (viewWidth/tileSize).toFixed(1).padStart(4,' ');
+    const viewHT = (viewHeight/tileSize).toFixed(1).padStart(4,' ');
+    ctx.fillText(`View w×h: ${viewW}×${viewH} px (${viewWT}×${viewHT} t)`,x,y); y+=18;
+    const boundL = Math.round(worldStartX).toString().padStart(4,' ');
+    const boundR = Math.round(worldEndX - viewWidth).toString().padStart(4,' ');
+    const boundT = Math.round(worldMinY).toString().padStart(4,' ');
+    const boundB = Math.round(worldMaxY - viewHeight).toString().padStart(4,' ');
+    ctx.fillText(`Cam bounds L/R/T/B: ${boundL}/${boundR}/${boundT}/${boundB} px`,x,y); y+=18;
+    const wMin = Math.round(worldMinY).toString().padStart(4,' ');
+    const wMax = Math.round(worldMaxY).toString().padStart(4,' ');
+    const wMinT = (worldMinY/tileSize).toFixed(1).padStart(4,' ');
+    const wMaxT = (worldMaxY/tileSize).toFixed(1).padStart(4,' ');
+    ctx.fillText(`World Y min/max: ${wMin} / ${wMax} px (${wMinT} / ${wMaxT} t)`,x,y); y+=18;
+    const tY = Math.round(world.camera.targetY||0).toString().padStart(4,' ');
+    const dY = Math.round(world.camera.desiredY||0).toString().padStart(4,' ');
+    const cY = Math.round(world.camera.y).toString().padStart(4,' ');
+    ctx.fillText(`Cam targetY/desY/curY: ${tY} / ${dY} / ${cY} px`,x,y); y+=18;
+    const smoothMs = Math.round(dt/0.15*1000);
+    ctx.fillText(`Smooth: ${smoothMs} ms`,x,y); y+=18;
+    const gridStepStr = gridStep===5?'5×5':'1×1';
+    ctx.fillText(`Grid: ${gridEnabled?'on':'off'} step: ${gridStepStr} tile: ${tileSize} px`,x,y); y+=18;
   }
-  ctx.fillText('Ground ΔY: +4 tiles',20,segment.done?210:170);
-  ctx.fillText(`Adj: small coin platforms −4t (moved:${movedCoinPlatforms}, clamped:${clampedCoinPlatforms})`,20,segment.done?230:190);
-  ctx.fillText('Cam framing: +6|+5|+3|0 tiles',20,segment.done?250:210);
-  ctx.fillText(`Reach V=${reachV.toFixed(0)} H0=${reachH0.toFixed(0)} Hrun=${reachHrun.toFixed(0)} | Fixed:${fixedCoins} | Unreachable:${unreachableCoins}`,
-    20,segment.done?270:230);
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
-  if(debug){
-    const dbgY = segment.done?290:250;
-    ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,dbgY);
-    ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,dbgY+20);
-    ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,dbgY+40);
-  }
   if(inputHUD){
     ctx.fillText(`L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${p.vx.toFixed(2)} last:${lastInputEvent}`,20,viewHeight-40);
   }
+  ctx.restore();
 }
 
 function updateGridButtons(){
