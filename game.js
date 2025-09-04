@@ -112,7 +112,7 @@ let lastInputEvent = '';
 
 let inputHUD = false;
 
-const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, framingYTiles:settings.framingTiles, targetY:0, desiredY:0, clampY:'none', appliedOffsetY:0, anchorY:0, dzUp:0, dzDown:0} };
+const world = { platforms:[], coins:[], player:null, spawnCenterX:0, camera:{x:0,y:0, framingYTiles:settings.framingTiles, targetY:0, desiredY:0, clampY:'none', appliedOffsetY:0, anchorY:0, dzUp:0, dzDown:0} };
 let worldStartX = 0, worldEndX = 0, worldMinY = 0, worldMaxY = 0, worldWidthPx = 0;
 let worldMode = 'detected';
 
@@ -642,6 +642,7 @@ function init(){
     breathe:0,dir:1,
     releaseCut:false,releaseTimer:0
   };
+  world.spawnCenterX = world.player.x + world.player.w/2;
   computeWorldBounds();
   rebuildGrid();
   gridBtn = document.getElementById('btn-grid');
@@ -911,12 +912,12 @@ function updateCamera(dt){
   // --- X axis follows as before ---
   const targetX = p.x + p.w/2;
   const desiredX = targetX - viewWidth/2;
-  const minCamX = worldStartX;
+  const minCamXSpawn = Math.max(worldStartX, world.spawnCenterX - viewWidth/2);
   const maxCamX = Math.max(worldStartX, worldEndX - viewWidth);
-  let camX = Math.min(Math.max(desiredX, minCamX), maxCamX);
+  let camX = Math.min(Math.max(desiredX, minCamXSpawn), maxCamX);
   world.camera.x += (camX - world.camera.x) * 0.15;
   if(Math.abs(camX - world.camera.x) < 0.5) world.camera.x = camX;
-  world.camera.x = Math.min(Math.max(world.camera.x, minCamX), maxCamX);
+  world.camera.x = Math.min(Math.max(world.camera.x, minCamXSpawn), maxCamX);
 
   // --- Y axis with dead-zone and smoothing ---
   let camY = world.camera.y;
@@ -1352,7 +1353,8 @@ function drawHUD(){
   const camX = Math.round(world.camera.x);
   const camCenterX = Math.round(world.camera.x + viewWidth/2);
   const camCenterTX = ((world.camera.x + viewWidth/2)/tileSize).toFixed(1);
-  const clampX = (camX <= Math.round(worldStartX)) ? 'left' :
+  const minCamXSpawn = Math.max(worldStartX, world.spawnCenterX - viewWidth/2);
+  const clampX = (camX <= Math.round(minCamXSpawn)) ? 'left' :
     (camX >= Math.round(Math.max(worldStartX, worldEndX - viewWidth)) ? 'right' : 'none');
   const line = `Framing: tiles=${tiles} | offY=${offPix} | clampY=${clamp} | CamY=${camY} | CamX=${camCenterX} (t=${camCenterTX}) | clampX=${clampX}`;
   ctx.strokeText(line, 20, 20);
