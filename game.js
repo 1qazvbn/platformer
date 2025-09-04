@@ -89,7 +89,7 @@ function init(){
   world.player = {
     x:0,y:0,w:40,h:40,vx:0,vy:0,onGround:false,
     coyote:0,jumpBuffer:0,
-    scaleX:1,scaleY:1,blink:0,blinkTimer:0,breathe:0,dir:1
+    scaleX:1,scaleY:1,blink:1,blinkTimer:4000+Math.random()*3000,blinkDuration:0,blinkRepeat:false,breathe:0,dir:1
   };
 }
 
@@ -124,8 +124,24 @@ function loop(t){
 function update(dt){
   const p = world.player;
   p.breathe += dt*2;
-  p.blinkTimer -= dt*1000; if(p.blinkTimer<=0){ p.blinkTimer = 200+Math.random()*200; p.blink=1; }
-  if(p.blinkTimer < 20) p.blink = 0;
+  p.blinkTimer -= dt*1000;
+  if(p.blinkTimer<=0 && p.blinkDuration<=0){
+    p.blink = 0;
+    p.blinkDuration = 120 + Math.random()*60;
+    p.blinkRepeat = Math.random() < 0.1;
+  }
+  if(p.blinkDuration>0){
+    p.blinkDuration -= dt*1000;
+    if(p.blinkDuration<=0){
+      p.blink = 1;
+      if(p.blinkRepeat){
+        p.blinkRepeat = false;
+        p.blinkTimer = 120 + Math.random()*60;
+      }else{
+        p.blinkTimer = 4000 + Math.random()*3000;
+      }
+    }
+  }
 
   p.coyote-=dt*1000; if(p.coyote<0) p.coyote=0;
   p.jumpBuffer-=dt*1000; if(p.jumpBuffer<0) p.jumpBuffer=0;
