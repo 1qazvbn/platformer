@@ -28,7 +28,7 @@ const DIFF_KEY = 'platformer.difficulty.v1';
 const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
 
 const settings = {
-  framingTiles: -3,
+  framingTiles: -5,
   camera: {
     followY: true,
     deadzoneUpTiles: 1.0,
