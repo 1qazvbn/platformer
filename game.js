@@ -12,7 +12,7 @@ let loader = null;
 
 const keys = {left:false,right:false,up:false};
 
-const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0,shake:0,shakeTime:0} };
+const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
 
 let started=false;
 function start(){
@@ -124,7 +124,10 @@ function update(dt){
   // Input
   if(keys.left) { p.vx -= MOVE_SPEED; p.dir=-1; }
   if(keys.right){ p.vx += MOVE_SPEED; p.dir=1; }
-  if(!keys.left && !keys.right && p.onGround) p.vx*=FRICTION;
+  if(!keys.left && !keys.right && p.onGround){
+    p.vx*=FRICTION;
+    if(Math.abs(p.vx) < 0.05) p.vx = 0;
+  }
 
   if(p.jumpBuffer>0 && (p.onGround || p.coyote>0)){
     p.vy = JUMP_VELOCITY;
@@ -156,11 +159,11 @@ function moveAndCollide(p, dt){
   let landed=false;
   for(const pl of world.platforms){
     if(rectIntersect(p,pl)){
-      if(p.vy>0){ p.y = pl.y - p.h; p.vy=0; p.onGround=true; p.coyote=COYOTE_MS; landed=true; world.camera.shakeTime=200; }
+      if(p.vy>0){ p.y = pl.y - p.h; p.vy=0; p.onGround=true; p.coyote=COYOTE_MS; landed=true; }
       else if(p.vy<0){ p.y = pl.y + pl.h; p.vy=0; }
     }
   }
-  if(!landed && p.onGround){ p.onGround=false; p.coyote=COYOTE_MS; world.camera.shakeTime=0; }
+  if(!landed && p.onGround){ p.onGround=false; p.coyote=COYOTE_MS; }
 
   // ease scale back
   p.scaleX += (1 - p.scaleX)*0.1;
@@ -172,7 +175,7 @@ function updateCoins(dt){
     c.t += dt;
     if(!c.collected){
       if(rectIntersect({x:world.player.x,y:world.player.y,w:world.player.w,h:world.player.h}, {x:c.x-10,y:c.y-10,w:20,h:20})){
-        c.collected=true; score++; world.camera.shakeTime=200;
+        c.collected=true; score++;
       }
     }
   }
@@ -184,13 +187,6 @@ function updateCamera(dt){
   const targetY = p.y + p.h/2 - canvas.height/2;
   world.camera.x += (targetX - world.camera.x)*0.1;
   world.camera.y += (targetY - world.camera.y)*0.1;
-  if(p.onGround){
-    world.camera.shakeTime -= dt*1000;
-    if(world.camera.shakeTime < 0) world.camera.shakeTime = 0;
-  }else{
-    world.camera.shakeTime = 0;
-  }
-  world.camera.shake = world.camera.shakeTime > 0 ? 5 * (world.camera.shakeTime/200) : 0;
 }
 
 function rectIntersect(a,b){
@@ -198,11 +194,11 @@ function rectIntersect(a,b){
 }
 
 function render(){
-  drawBackground(world.camera.x*0.2);
+  drawBackground(Math.round(world.camera.x*0.2));
   ctx.save();
-  const shakeX = (Math.random()*2-1)*world.camera.shake;
-  const shakeY = (Math.random()*2-1)*world.camera.shake;
-  ctx.translate(-world.camera.x + shakeX, -world.camera.y + shakeY);
+  const camX = Math.round(world.camera.x);
+  const camY = Math.round(world.camera.y);
+  ctx.translate(-camX, -camY);
   drawPlatforms();
   drawCoins();
   drawPlayer();
@@ -219,12 +215,12 @@ function drawBackground(offset){
   ctx.fillRect(0,0,w,h);
   if(!safeMode){
     ctx.fillStyle = '#a0d0ff';
-    for(let i=0;i<3;i++){
-      const x = (offset*0.3 + i*200)% (w+200) -200;
-      ctx.beginPath();
-      ctx.arc(x,100+i*30,80,0,Math.PI*2);
-      ctx.fill();
-    }
+      for(let i=0;i<3;i++){
+        const x = Math.round((offset*0.3 + i*200)% (w+200) -200);
+        ctx.beginPath();
+        ctx.arc(x,100+i*30,80,0,Math.PI*2);
+        ctx.fill();
+      }
   }
 }
 
