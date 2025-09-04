@@ -31,6 +31,7 @@ let stepBtn = null;
 let deadZoneDebug = false;
 
 const DIFF_KEY = 'platformer.difficulty.v1';
+const FRAMING_KEY = 'platformer.camera.framingTiles';
 // Difficulty multipliers relative to Easy base values
 const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
 
@@ -43,6 +44,9 @@ const settings = {
     lerpPerSec: 10.0
   }
 };
+
+const storedFraming = parseFloat(localStorage.getItem(FRAMING_KEY));
+if(!isNaN(storedFraming)) settings.framingTiles = Math.max(-8, Math.min(8, storedFraming));
 
 const base = {
   maxRunSpeed: 6.0 * 3.5 * 2.20, // rebased from previous Hard
@@ -180,7 +184,11 @@ function resetSegment(){
 function computeWorldBounds(){
   const tile = 60;
   const TAIL_TILES = 3;
-  const tail = TAIL_TILES * tile;
+  const tailX = TAIL_TILES * tile;
+  const topPadTiles = Math.max(12, Math.abs(settings.framingTiles) + 6);
+  const bottomPadTiles = Math.max(6, TAIL_TILES);
+  const topPad = topPadTiles * tile;
+  const bottomPad = bottomPadTiles * tile;
   let minX = Infinity, maxX = -Infinity;
   worldMinY = Infinity;
   worldMaxY = -Infinity;
@@ -208,10 +216,21 @@ function computeWorldBounds(){
   }
   if(worldMinY === Infinity) worldMinY = 0;
   if(worldMaxY === -Infinity) worldMaxY = 0;
-  minX = Math.min(minX, 0) - tail;
-  maxX = maxX + tail;
-  worldMinY -= tail;
-  worldMaxY += tail;
+  minX = Math.min(minX, 0) - tailX;
+  maxX = maxX + tailX;
+  worldMinY -= topPad;
+  worldMaxY += bottomPad;
+
+  // Ensure camera can reach desired offset when player stands on ground
+  const ground = world.platforms[0];
+  if(ground && p){
+    const playerY = ground.y - p.h/2;
+    const offsetY = settings.framingTiles * tile;
+    const desiredCamY = playerY - (viewHeight/2 - offsetY);
+    const minAllowed = desiredCamY - 2 * tile;
+    if(worldMinY > minAllowed) worldMinY = minAllowed;
+  }
+
   const detectedTiles = Math.ceil((maxX - minX) / tile);
   worldMode = 'detected';
   if(detectedTiles < 1440){
@@ -542,8 +561,24 @@ function init(){
     if(e.code==='F2'){ toggleGrid(); e.preventDefault(); return; }
     if(e.code==='F4'){ toggleGridStep(); e.preventDefault(); return; }
     if(e.code==='KeyG'){ deadZoneDebug=!deadZoneDebug; e.preventDefault(); return; }
-    if(e.code==='BracketLeft'){ settings.framingTiles=Math.max(-8,settings.framingTiles-1); world.camera.framingYTiles=settings.framingTiles; e.preventDefault(); return; }
-    if(e.code==='BracketRight'){ settings.framingTiles=Math.min(8,settings.framingTiles+1); world.camera.framingYTiles=settings.framingTiles; e.preventDefault(); return; }
+    if(e.code==='BracketLeft'){
+      settings.framingTiles=Math.max(-8,settings.framingTiles-1);
+      world.camera.framingYTiles=settings.framingTiles;
+      localStorage.setItem(FRAMING_KEY, settings.framingTiles);
+      computeWorldBounds();
+      rebuildGrid();
+      e.preventDefault();
+      return;
+    }
+    if(e.code==='BracketRight'){
+      settings.framingTiles=Math.min(8,settings.framingTiles+1);
+      world.camera.framingYTiles=settings.framingTiles;
+      localStorage.setItem(FRAMING_KEY, settings.framingTiles);
+      computeWorldBounds();
+      rebuildGrid();
+      e.preventDefault();
+      return;
+    }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
     if(e.code==='ArrowLeft'||e.code==='KeyA') keyLeft=true;
     if(e.code==='ArrowRight'||e.code==='KeyD') keyRight=true;
@@ -946,7 +981,7 @@ function render(){
     ctx.strokeRect(0, anchorScreenY - zu, viewWidth, zu + zd);
     ctx.restore();
   }
-  drawHUD(camX, camY);
+  drawHUD();
   gridDrawnPrev = gridDrawnNow;
 }
 
@@ -1121,86 +1156,33 @@ function getGroundY(p){
   return gy;
 }
 
-function drawHUD(camX, camY){
+function drawHUD(){
   ctx.save();
   ctx.fillStyle = '#fff';
   ctx.strokeStyle = 'rgba(0,0,0,0.8)';
   ctx.lineWidth = 3;
   ctx.font = '14px monospace';
   ctx.textBaseline = 'top';
-  const p = world.player;
-  const state = paused ? 'MENU' : 'PLAY';
+
   const tiles = world.camera.framingYTiles || 0;
   const offPix = Math.round(world.camera.appliedOffsetY || 0);
   const clamp = world.camera.clampY || 'none';
-  const camLine = `State: ${state} | Framing: tiles=${tiles}, offY=${offPix}, clamp=${clamp} | Cam: x=${Math.round(world.camera.x)}, y=${Math.round(world.camera.y)} | Player: x=${Math.round(p.x)}, y=${Math.round(p.y)}`;
-  const camYInfo = `CamY: y=${Math.round(world.camera.y)} anchorY=${Math.round(world.camera.anchorY||0)} upDZ=${Math.round(world.camera.dzUp||0)} dnDZ=${Math.round(world.camera.dzDown||0)} clamp=${world.camera.clampY||'none'}`;
-
-  const lines = [camLine, camYInfo];
-  lines.push('Coins: '+score);
-  lines.push('Arrows/A,D move • W/↑/Space jump • R reset timer');
-  const diffFactor = DIFF_FACTORS[currentDifficulty];
-  lines.push(`Diff: ${currentDifficulty} (×${diffFactor.toFixed(2)})`);
-  const vInst = Math.abs(p.vx*10);
-  const vTiles = vInst/60;
-  lines.push(`v_inst: ${vInst.toFixed(1)}px/s (${vTiles.toFixed(2)}t/s) v_max: ${vMax.toFixed(1)}px/s`);
-  const gridStepStr = gridStep===5?'5×5':'1×1';
-  lines.push(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStepStr} | Tile: ${tileSize}px`);
-  const worldTiles = Math.round(worldWidthPx/60);
-  lines.push(`World: ${worldTiles} tiles (${worldMode})`);
-
-  const px = Math.round(p.x).toString().padStart(4,' ');
-  const py = Math.round(p.y).toString().padStart(4,' ');
-  const ptx = (p.x/tileSize).toFixed(1).padStart(4,' ');
-  const pty = (p.y/tileSize).toFixed(1).padStart(4,' ');
-  lines.push(`P x=${px} px (t=${ptx}) y=${py} px (t=${pty})`);
-  const cx = Math.round(camX + viewWidth/2).toString().padStart(4,' ');
-  const cy = Math.round(camY + viewHeight/2).toString().padStart(4,' ');
-  const ctxT = ((camX + viewWidth/2)/tileSize).toFixed(1).padStart(4,' ');
-  const ctyT = ((camY + viewHeight/2)/tileSize).toFixed(1).padStart(4,' ');
-  lines.push(`C x=${cx} px (t=${ctxT}) y=${cy} px (t=${ctyT})`);
-  lines.push(`Framing: tiles=${tiles} (offY=${offPix}px, clamp=${clamp})`);
-
-  if(hudExtended){
-    const viewW = viewWidth.toString().padStart(3,' ');
-    const viewH = viewHeight.toString().padStart(3,' ');
-    const viewWT = (viewWidth/tileSize).toFixed(1).padStart(4,' ');
-    const viewHT = (viewHeight/tileSize).toFixed(1).padStart(4,' ');
-    lines.push(`View w×h: ${viewW}×${viewH} px (${viewWT}×${viewHT} t)`);
-    const boundL = Math.round(worldStartX).toString().padStart(4,' ');
-    const boundR = Math.round(worldEndX - viewWidth).toString().padStart(4,' ');
-    const boundT = Math.round(worldMinY).toString().padStart(4,' ');
-    const boundB = Math.round(worldMaxY - viewHeight).toString().padStart(4,' ');
-    lines.push(`Cam bounds L/R/T/B: ${boundL}/${boundR}/${boundT}/${boundB} px`);
-    const wMin = Math.round(worldMinY).toString().padStart(4,' ');
-    const wMax = Math.round(worldMaxY).toString().padStart(4,' ');
-    const wMinT = (worldMinY/tileSize).toFixed(1).padStart(4,' ');
-    const wMaxT = (worldMaxY/tileSize).toFixed(1).padStart(4,' ');
-    lines.push(`World Y min/max: ${wMin} / ${wMax} px (${wMinT} / ${wMaxT} t)`);
-    const tY = Math.round(world.camera.targetY||0).toString().padStart(4,' ');
-    const dY = Math.round(world.camera.desiredY||0).toString().padStart(4,' ');
-    const cY = Math.round(world.camera.y).toString().padStart(4,' ');
-    lines.push(`Cam targetY/desY/curY: ${tY} / ${dY} / ${cY} px`);
-    const smoothMs = Math.round(dt/0.15*1000);
-    lines.push(`Smooth: ${smoothMs} ms`);
-    lines.push(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStepStr} | DPR: ${dpr.toFixed(2)} | Scale: ${canvasScale.toFixed(2)} | eff: ${eff.toFixed(2)} | ${gridDrawnPrev?'drawn':'not'}`);
-  }
-
-  let x = 20, y = 20;
-  for(const line of lines){
-    ctx.strokeText(line, x, y);
-    ctx.fillText(line, x, y);
-    y += 18;
-  }
+  const camY = Math.round(world.camera.y);
+  const line = `Framing: tiles=${tiles} | offY=${offPix} | clampY=${clamp} | CamY=${camY}`;
+  ctx.strokeText(line, 20, 20);
+  ctx.fillText(line, 20, 20);
 
   const ver = 'v'+GAME_VERSION;
   ctx.strokeText(ver, viewWidth-80, viewHeight-20);
   ctx.fillText(ver, viewWidth-80, viewHeight-20);
+
   if(inputHUD){
+    const p = world.player;
     const inputLine = `L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${p.vx.toFixed(2)} last:${lastInputEvent}`;
     ctx.strokeText(inputLine,20,viewHeight-40);
     ctx.fillText(inputLine,20,viewHeight-40);
   }
+
   ctx.restore();
 }
 
