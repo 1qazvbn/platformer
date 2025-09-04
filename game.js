@@ -56,18 +56,19 @@ function randomYawnCooldown(){
   return 10000 + Math.random()*5000;
 }
 
-const keys = {left:false,right:false,up:false};
-let move = 0;
+let leftHeld = false, rightHeld = false, upHeld = false;
+let moveAxis = 0;
 const AIR_DECEL = 0.98;
-const DEAD_ZONE = 0.5;
+const STOP_EPS = 0.05; // ~0.5px/s
+let lastInputEvent = '';
 
 let inputHUD = false;
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0} };
 
 function resetInput(){
-  keys.left = keys.right = keys.up = false;
-  move = 0;
+  leftHeld = rightHeld = upHeld = false;
+  moveAxis = 0;
   if(world.player) world.player.vx = 0;
 }
 
@@ -131,19 +132,21 @@ function init(){
     if(e.code==='F3'){ debug=!debug; e.preventDefault(); return; }
     if(e.code==='F1'){ inputHUD=!inputHUD; e.preventDefault(); return; }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
-    if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=true;
-    if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=true;
-    if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'){ keys.up=true; world.player.jumpBuffer=JUMP_BUFFER_MS; }
+    if(e.code==='ArrowLeft'||e.code==='KeyA') leftHeld=true;
+    if(e.code==='ArrowRight'||e.code==='KeyD') rightHeld=true;
+    if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'){ upHeld=true; world.player.jumpBuffer=JUMP_BUFFER_MS; }
     if(e.code==='KeyR'){ resetSegment(); resetInput(); }
+    lastInputEvent = 'keydown '+e.code;
   });
   window.addEventListener('keyup',e=>{
-    if(e.code==='ArrowLeft'||e.code==='KeyA') keys.left=false;
-    if(e.code==='ArrowRight'||e.code==='KeyD') keys.right=false;
-    if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space') keys.up=false;
+    if(e.code==='ArrowLeft'||e.code==='KeyA') leftHeld=false;
+    if(e.code==='ArrowRight'||e.code==='KeyD') rightHeld=false;
+    if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space') upHeld=false;
+    lastInputEvent = 'keyup '+e.code;
   });
-  window.addEventListener('blur', resetInput);
-  document.addEventListener('visibilitychange',()=>{ if(document.hidden) resetInput(); });
-  ['touchend','touchcancel','touchleave'].forEach(ev=>window.addEventListener(ev, resetInput));
+  window.addEventListener('blur',()=>{ resetInput(); lastInputEvent='blur'; });
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden){ resetInput(); lastInputEvent='vis'; } });
+  ['touchend','touchcancel','touchleave'].forEach(ev=>window.addEventListener(ev,()=>{ resetInput(); lastInputEvent=ev; }));
 
   // Level
   world.platforms = asArray([
@@ -201,7 +204,7 @@ function update(dt){
   const p = world.player;
   p.breathe += dt*2;
 
-  if(p.yawning && (!p.onGround || keys.left || keys.right || keys.up)){
+  if(p.yawning && (!p.onGround || leftHeld || rightHeld || upHeld)){
     cancelYawn(p);
   }
 
@@ -211,7 +214,7 @@ function update(dt){
     if(p.yawnCooldown>0){
       p.yawnCooldown -= dt*1000;
     }else{
-      const idle = p.onGround && Math.abs(p.vx) < 0.05 && Math.abs(p.vy) < 0.05 && !keys.left && !keys.right && !keys.up;
+      const idle = p.onGround && Math.abs(p.vx) < 0.05 && Math.abs(p.vy) < 0.05 && !leftHeld && !rightHeld && !upHeld;
       if(idle){
         p.yawnTimer -= dt*1000;
         if(p.yawnTimer<=0) startYawn(p);
@@ -252,13 +255,22 @@ function update(dt){
 
   // Input
   const accel = p.onGround ? RUN_ACCEL : AIR_ACCEL;
-  move = (keys.right?1:0) - (keys.left?1:0);
-  if(move){
-    p.vx += move*accel;
-    p.dir = move > 0 ? 1 : -1;
+  const prevVx = p.vx;
+  moveAxis = (rightHeld?1:0) - (leftHeld?1:0);
+  if(moveAxis){
+    p.vx += moveAxis*accel;
+    p.dir = moveAxis > 0 ? 1 : -1;
   }else{
-    p.vx *= p.onGround ? RUN_DECEL : AIR_DECEL;
-    if(Math.abs(p.vx) < DEAD_ZONE) p.vx = 0;
+    if(p.onGround){
+      if(p.vx>0){ p.vx = Math.max(0, p.vx-RUN_DECEL); }
+      else if(p.vx<0){ p.vx = Math.min(0, p.vx+RUN_DECEL); }
+    }else{
+      p.vx *= AIR_DECEL;
+    }
+  }
+  if(!moveAxis){
+    if((prevVx>0 && p.vx<0) || (prevVx<0 && p.vx>0)) p.vx=0;
+    if(Math.abs(p.vx) < STOP_EPS) p.vx = 0;
   }
 
   if(p.jumpBuffer>0 && (p.onGround || p.coyote>0)){
@@ -268,7 +280,7 @@ function update(dt){
     p.scaleY=0.9; p.scaleX=1.1;
   }
 
-  if(!keys.up && p.vy<0) p.vy *= 0.4; // variable jump
+  if(!upHeld && p.vy<0) p.vy *= 0.4; // variable jump
 
   p.vy += GRAVITY;
   // limit speeds
@@ -276,6 +288,7 @@ function update(dt){
 
   const prevCenterX = p.x + p.w/2;
   moveAndCollide(p, dt);
+  if(!moveAxis && Math.abs(p.vx) < STOP_EPS) p.vx = 0;
   updateCoins(dt);
   updateCamera(dt);
 
@@ -586,7 +599,7 @@ function drawHUD(camX, camY){
     ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,210);
   }
   if(inputHUD){
-    ctx.fillText(`L:${keys.left?1:0} R:${keys.right?1:0} move:${move} vx:${p.vx.toFixed(2)}`,20,viewHeight-40);
+    ctx.fillText(`L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${p.vx.toFixed(2)} last:${lastInputEvent}`,20,viewHeight-40);
   }
 }
 
