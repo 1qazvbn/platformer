@@ -21,6 +21,7 @@ let gridStep = parseInt(localStorage.getItem(GRID_STEP_KEY),10);
 if(gridStep !== 5) gridStep = 1;
 let gridBtn = null;
 let stepBtn = null;
+let deadZoneDebug = false;
 
 const DIFF_KEY = 'platformer.difficulty.v1';
 // Difficulty multipliers relative to Easy base values
@@ -28,7 +29,13 @@ const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
 
 const SETTINGS_FRAMING_KEY = 'platformer:framingTiles';
 const settings = {
-  framingTiles: parseInt(localStorage.getItem(SETTINGS_FRAMING_KEY), 10)
+  framingTiles: parseInt(localStorage.getItem(SETTINGS_FRAMING_KEY), 10),
+  camera: {
+    followY: true,
+    deadzoneUpTiles: 1.0,
+    deadzoneDownTiles: 2.0,
+    lerpPerSec: 8.0
+  }
 };
 if(!(settings.framingTiles >= 0 && settings.framingTiles <= 8)) settings.framingTiles = 5;
 
@@ -93,7 +100,7 @@ let lastInputEvent = '';
 
 let inputHUD = false;
 
-const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, framingYTiles:settings.framingTiles, targetY:0, desiredY:0, clampY:'none', appliedOffsetY:0} };
+const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, framingYTiles:settings.framingTiles, targetY:0, desiredY:0, clampY:'none', appliedOffsetY:0, anchorY:0, dzUp:0, dzDown:0} };
 let worldStartX = 0, worldEndX = 0, worldMinY = 0, worldMaxY = 0, worldWidthPx = 0;
 let worldMode = 'detected';
 
@@ -522,6 +529,7 @@ function init(){
     if(e.code==='F1'){ inputHUD=!inputHUD; e.preventDefault(); return; }
     if(e.code==='F2'){ toggleGrid(); e.preventDefault(); return; }
     if(e.code==='F4'){ toggleGridStep(); e.preventDefault(); return; }
+    if(e.code==='KeyG'){ deadZoneDebug=!deadZoneDebug; e.preventDefault(); return; }
     if(e.code==='BracketLeft'){ settings.framingTiles=Math.max(0,settings.framingTiles-1); world.camera.framingYTiles=settings.framingTiles; localStorage.setItem(SETTINGS_FRAMING_KEY,settings.framingTiles); e.preventDefault(); return; }
     if(e.code==='BracketRight'){ settings.framingTiles=Math.min(8,settings.framingTiles+1); world.camera.framingYTiles=settings.framingTiles; localStorage.setItem(SETTINGS_FRAMING_KEY,settings.framingTiles); e.preventDefault(); return; }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
@@ -598,7 +606,7 @@ function loop(t){
     if(t - fpsTime > 1000){ fps = frameCount; frameCount=0; fpsTime=t; if(fps<30) safeMode=true; }
     let steps=0; while(acc >= dt && steps < 5){ update(dt); acc-=dt; steps++; }
     if(acc>dt) acc=dt;
-    updateCamera();
+    updateCamera(delta/1000);
     render();
     if(!isReady){
       isReady = true;
@@ -836,36 +844,56 @@ function updateCoins(dt){
   }
 }
 
-function updateCamera(){
+function updateCamera(dt){
   const p = world.player;
   if(!p) return;
+
+  // --- X axis follows as before ---
   const targetX = p.x + p.w/2;
-  const targetY = p.y + p.h/2;
-  const offsetY = settings.framingTiles * tileSize;
   const desiredX = targetX - viewWidth/2;
-  const desiredY = targetY - (viewHeight/2 - offsetY);
   const minCamX = worldStartX;
   const maxCamX = Math.max(worldStartX, worldEndX - viewWidth);
+  let camX = Math.min(Math.max(desiredX, minCamX), maxCamX);
+  world.camera.x += (camX - world.camera.x) * 0.15;
+  if(Math.abs(camX - world.camera.x) < 0.5) world.camera.x = camX;
+  world.camera.x = Math.min(Math.max(world.camera.x, minCamX), maxCamX);
+
+  // --- Y axis with dead-zone and smoothing ---
+  let camY = world.camera.y;
+  const offsetY = settings.framingTiles * tileSize;
+  const anchorWorldY = camY + (viewHeight/2 - offsetY);
+  const zu = settings.camera.deadzoneUpTiles * tileSize;
+  const zd = settings.camera.deadzoneDownTiles * tileSize;
+  const playerY = p.y + p.h/2;
+  let targetCamY = camY;
+  if(settings.camera.followY){
+    if(playerY < anchorWorldY - zu){
+      targetCamY = playerY + zu - (viewHeight/2 - offsetY);
+    }else if(playerY > anchorWorldY + zd){
+      targetCamY = playerY - zd - (viewHeight/2 - offsetY);
+    }
+  }
+  const alpha = 1 - Math.exp(-settings.camera.lerpPerSec * dt);
+  camY = camY + (targetCamY - camY) * alpha;
+
   const minCamY = worldMinY;
   const maxCamY = Math.max(worldMinY, worldMaxY - viewHeight);
-  let camX = desiredX;
-  let camY = desiredY;
   let clampY = 'none';
   if(camY < minCamY){ camY = minCamY; clampY = 'top'; }
   else if(camY > maxCamY){ camY = maxCamY; clampY = 'bottom'; }
-  camX = Math.min(Math.max(camX, minCamX), maxCamX);
+
+  world.camera.y = camY;
   world.camera.framingYTiles = settings.framingTiles;
-  world.camera.targetY = targetY;
-  world.camera.desiredY = camY;
   world.camera.clampY = clampY;
-  world.camera.x += (camX - world.camera.x) * 0.15;
-  world.camera.y += (camY - world.camera.y) * 0.15;
-  if(Math.abs(camX - world.camera.x) < 0.5) world.camera.x = camX;
-  if(Math.abs(camY - world.camera.y) < 0.5) world.camera.y = camY;
-  world.camera.x = Math.min(Math.max(world.camera.x, minCamX), maxCamX);
-  world.camera.y = Math.min(Math.max(world.camera.y, minCamY), maxCamY);
-  const screenY = targetY - world.camera.y;
-  const applied = Math.round(viewHeight/2 - screenY);
+  world.camera.anchorY = anchorWorldY;
+  world.camera.dzUp = zu;
+  world.camera.dzDown = zd;
+  world.camera.targetY = playerY;
+  world.camera.desiredY = targetCamY;
+
+  const screenPlayerY = playerY - world.camera.y;
+  const screenAnchorY = viewHeight/2 - offsetY;
+  const applied = Math.round(screenAnchorY - screenPlayerY);
   world.camera.appliedOffsetY = applied;
 }
 
@@ -886,6 +914,18 @@ function render(){
   drawCoins();
   drawPlayer();
   ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(deadZoneDebug){
+    const offsetY = settings.framingTiles * tileSize;
+    const anchorScreenY = viewHeight/2 - offsetY;
+    const zu = world.camera.dzUp || 0;
+    const zd = world.camera.dzDown || 0;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,0,0,0.2)';
+    ctx.strokeStyle = 'rgba(255,0,0,0.5)';
+    ctx.fillRect(0, anchorScreenY - zu, viewWidth, zu + zd);
+    ctx.strokeRect(0, anchorScreenY - zu, viewWidth, zu + zd);
+    ctx.restore();
+  }
   drawHUD(camX, camY);
   gridDrawnPrev = gridDrawnNow;
 }
@@ -1073,8 +1113,9 @@ function drawHUD(camX, camY){
   const offPix = Math.round(world.camera.appliedOffsetY || 0);
   const clamp = world.camera.clampY || 'none';
   const camLine = `State: ${state} | Framing: tiles=${tiles}, offY=${offPix}, clamp=${clamp} | Cam: x=${Math.round(world.camera.x)}, y=${Math.round(world.camera.y)} | Player: x=${Math.round(p.x)}, y=${Math.round(p.y)}`;
+  const camYInfo = `CamY: y=${Math.round(world.camera.y)} anchorY=${Math.round(world.camera.anchorY||0)} dzUp=${Math.round(world.camera.dzUp||0)} dzDn=${Math.round(world.camera.dzDown||0)} dY=${Math.round((p.y+p.h/2)-(world.camera.anchorY||0))}`;
 
-  const lines = [camLine];
+  const lines = [camLine, camYInfo];
   lines.push('Coins: '+score);
   lines.push('Arrows/A,D move • W/↑/Space jump • R reset timer');
   const diffFactor = DIFF_FACTORS[currentDifficulty];
