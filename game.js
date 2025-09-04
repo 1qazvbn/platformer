@@ -12,6 +12,34 @@ let loader = null;
 let debug = false;
 let paused = true;
 
+const DIFF_KEY = 'platformer.difficulty.v1';
+const DIFF_FACTORS = { Easy:1.00, Normal:1.10, Hard:1.20 };
+
+const base = {
+  maxRunSpeed: 6.0 * 3.5, // allow up to ×4 if needed
+  runAccel: 6.0 * 3.0,
+  runDecel: 0.7 // was 0.85 (×2 decel)
+};
+
+let MAX_RUN_SPEED = base.maxRunSpeed;
+let RUN_ACCEL = base.runAccel;
+let RUN_DECEL = base.runDecel;
+const AIR_ACCEL = 6.0; // keep air control
+const JUMP_VELOCITY = -35;
+const COYOTE_MS = 100;
+const JUMP_BUFFER_MS = 120;
+const GRAVITY = 1.2;
+
+let currentDifficulty = localStorage.getItem(DIFF_KEY) || 'Easy';
+if(!DIFF_FACTORS[currentDifficulty]) currentDifficulty = 'Easy';
+
+function applyDifficulty(diff){
+  const factor = DIFF_FACTORS[diff] || 1;
+  MAX_RUN_SPEED = base.maxRunSpeed * factor;
+  RUN_ACCEL = base.runAccel * factor;
+  RUN_DECEL = base.runDecel * factor;
+}
+
 function randomBlinkInterval(){
   return Math.random() < 0.5
     ? 2000 + Math.random()*1500
@@ -130,33 +158,6 @@ function init(){
   };
 }
 
-const DIFF_KEY = 'platformer.difficulty.v1';
-const DIFFICULTIES = {
-  easy:{label:'Easy',factor:1},
-  normal:{label:'Normal',factor:1.1},
-  hard:{label:'Hard',factor:1.2}
-};
-const BASE_MAX_RUN_SPEED = 6.0 * 3.5; // allow up to ×4 if needed
-const BASE_RUN_ACCEL = 6.0 * 3.0;
-const BASE_RUN_DECEL = 0.7; // was 0.85 (×2 decel)
-let MAX_RUN_SPEED = BASE_MAX_RUN_SPEED;
-let RUN_ACCEL = BASE_RUN_ACCEL;
-let RUN_DECEL = BASE_RUN_DECEL;
-const AIR_ACCEL = 6.0; // keep air control
-const JUMP_VELOCITY = -35;
-const COYOTE_MS = 100;
-const JUMP_BUFFER_MS = 120;
-const GRAVITY = 1.2;
-let difficulty = localStorage.getItem(DIFF_KEY) || 'easy';
-if(!DIFFICULTIES[difficulty]) difficulty = 'easy';
-applyDifficulty();
-
-function applyDifficulty(){
-  const factor = DIFFICULTIES[difficulty].factor;
-  MAX_RUN_SPEED = BASE_MAX_RUN_SPEED * factor;
-  RUN_ACCEL = BASE_RUN_ACCEL * factor;
-  RUN_DECEL = BASE_RUN_DECEL * factor;
-}
 
 function loop(t){
   try{
@@ -547,7 +548,8 @@ function drawHUD(camX, camY){
   ctx.font = '16px sans-serif';
   ctx.fillText('Coins: '+score,20,30);
   ctx.fillText('Arrows/A,D move • W/↑/Space jump • R reset timer',20,50);
-  ctx.fillText(`Diff: ${DIFFICULTIES[difficulty].label} (x${DIFFICULTIES[difficulty].factor.toFixed(2)})`,20,70);
+  const diffFactor = DIFF_FACTORS[currentDifficulty];
+  ctx.fillText(`Diff: ${currentDifficulty} (x${diffFactor.toFixed(2)})`,20,70);
   const p = world.player;
   const vInst = p.vx*10;
   const vTiles = vInst/60;
@@ -583,22 +585,21 @@ function setupMenu(){
     paused = true;
   };
 
-  startBtn.addEventListener('click',()=>{ menu.style.display='none'; paused=false; });
+  startBtn.addEventListener('click',()=>{ applyDifficulty(currentDifficulty); menu.style.display='none'; paused=false; });
   settingsBtn.addEventListener('click',()=>show('settings'));
   backBtn.addEventListener('click',()=>show('main'));
 
   diffRadios.forEach(r=>r.addEventListener('change',e=>{
-    difficulty = e.target.value;
-    applyDifficulty();
-    localStorage.setItem(DIFF_KEY,difficulty);
+    currentDifficulty = e.target.value;
+    localStorage.setItem(DIFF_KEY,currentDifficulty);
   }));
-  const saved = document.querySelector(`input[name="difficulty"][value="${difficulty}"]`);
+  const saved = document.querySelector(`input[name="difficulty"][value="${currentDifficulty}"]`);
   if(saved) saved.checked = true;
 
   window.addEventListener('keydown',e=>{
     if(menu.style.display!=='none'){
       if(!mainMenu.classList.contains('hidden')){
-        if(e.code==='Enter'){ menu.style.display='none'; paused=false; e.preventDefault(); }
+        if(e.code==='Enter'){ applyDifficulty(currentDifficulty); menu.style.display='none'; paused=false; e.preventDefault(); }
       }else{
         if(e.code==='Escape'||e.code==='Backspace'){ show('main'); e.preventDefault(); }
       }
