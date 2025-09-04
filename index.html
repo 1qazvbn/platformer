@@ -11,6 +11,7 @@ body{margin:0;background:#0e0f14;color:#eee;font-family:system-ui,-apple-system,
 <script src="version.js"></script>
 <script>
 function showError(err){
+  if(self.BOOT && self.BOOT.watchdog) clearTimeout(self.BOOT.watchdog);
   const l=document.getElementById('loading-screen');
   if(l) l.style.display='none';
   const o=document.getElementById('error-overlay');
@@ -21,8 +22,16 @@ window.onerror=(msg,src,line,col,err)=>{showError(err||msg);};
 window.onunhandledrejection=e=>{showError(e.reason);};
 (function(){
   try{
+    if(typeof self.GAME_VERSION==='undefined') throw new Error('version.js failed to load');
     document.title=`Platformer — v${self.GAME_VERSION}`;
     const addVersion=u=>self.GAME_VERSION?`${u}?v=${self.GAME_VERSION}`:u;
+    self.BOOT={script:false,init:false,loop:false,frame:false};
+    self.BOOT.watchdog=setTimeout(()=>{
+      if(!self.BOOT.frame){
+        const reason=!self.BOOT.script?'version/import':!self.BOOT.init?'world/input init':!self.BOOT.loop?'loop start':'first frame render';
+        showError('Startup timeout: '+reason);
+      }
+    },2000);
     const link=document.getElementById('main-style');
     link.href=addVersion('styles.css');
     function loadScript(src){
@@ -34,21 +43,20 @@ window.onunhandledrejection=e=>{showError(e.reason);};
         document.head.appendChild(s);
       });
     }
-    loadScript(addVersion('game.js')).catch(err=>{
-      console.error(err);
-      showError(err);
-      return loadScript('game.js');
-    }).catch(err=>{
-      console.error(err);
-      showError(err);
-    });
-    if('serviceWorker' in navigator){
-      navigator.serviceWorker.register(addVersion('sw.js')).then(()=>{
-        navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
-      }).catch(err=>{
+    loadScript(addVersion('game.js'))
+      .catch(err=>{
         console.error(err);
-        showError(err);
+        return loadScript('game.js');
+      })
+      .then(()=>{ self.BOOT.script=true; })
+      .catch(err=>{ console.error(err); showError(err); });
+    if('serviceWorker' in navigator){
+      const registerSw=src=>navigator.serviceWorker.register(src).then(()=>{
+        navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
       });
+      registerSw(addVersion('sw.js'))
+        .catch(err=>{ console.error(err); return registerSw('sw.js'); })
+        .catch(err=>{ console.error(err); showError(err); });
     }
   }catch(e){showError(e);}
 })();

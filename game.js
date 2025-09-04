@@ -1,4 +1,5 @@
 const GAME_VERSION = self.GAME_VERSION;
+if(self.BOOT) self.BOOT.script = true;
 
 function asArray(v){ return Array.isArray(v)?v:[]; }
 
@@ -13,21 +14,10 @@ const keys = {left:false,right:false,up:false};
 
 const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0,shake:0,shakeTime:0} };
 
-function showError(err){
-  if(loader) loader.style.display = 'none';
-  else{
-    const l = document.getElementById('loading-screen');
-    if(l) l.style.display = 'none';
-  }
-  const o = document.getElementById('error-overlay');
-  o.textContent = (err && err.stack) || err;
-  o.style.display = 'block';
-}
-
-window.onerror = (msg,src,line,col,err)=>{ showError(err||msg); };
-window.onunhandledrejection = e=>{ showError(e.reason); };
-
+let started=false;
 function start(){
+  if(started) return;
+  started=true;
   canvas = document.getElementById('game');
   ctx = canvas.getContext('2d');
   resize();
@@ -35,8 +25,10 @@ function start(){
   drawLoading();
   try{
     init();
+    if(self.BOOT) self.BOOT.init=true;
     last = performance.now();
     requestAnimationFrame(loop);
+    if(self.BOOT) self.BOOT.loop=true;
   }catch(e){ showError(e); }
 }
 
@@ -48,7 +40,7 @@ function drawLoading(){
   ctx.fillText('Loading...',20,40);
 }
 
-window.addEventListener('DOMContentLoaded', start);
+if(document.readyState==='loading') window.addEventListener('DOMContentLoaded', start, {once:true}); else start();
 window.addEventListener('resize', resize);
 
 function resize(){
@@ -111,6 +103,10 @@ function loop(t){
     if(!isReady){
       isReady = true;
       if(loader) loader.style.display = 'none';
+      if(self.BOOT){
+        self.BOOT.frame = true;
+        if(self.BOOT.watchdog) clearTimeout(self.BOOT.watchdog);
+      }
     }
     requestAnimationFrame(loop);
   }catch(e){ showError(e); }
