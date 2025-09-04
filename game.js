@@ -12,6 +12,14 @@ let loader = null;
 let debug = false;
 let paused = true;
 
+const GRID_ENABLED_KEY = 'platformer.debug.grid.enabled';
+const GRID_STEP_KEY = 'platformer.debug.grid.step';
+let gridEnabled = localStorage.getItem(GRID_ENABLED_KEY) === 'true';
+let gridStep = parseInt(localStorage.getItem(GRID_STEP_KEY),10);
+if(gridStep !== 5) gridStep = 1;
+let gridBtn = null;
+let stepBtn = null;
+
 const DIFF_KEY = 'platformer.difficulty.v1';
 // Difficulty multipliers relative to Easy base values
 const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
@@ -175,6 +183,8 @@ function init(){
   window.addEventListener('keydown',e=>{
     if(e.code==='F3'){ debug=!debug; e.preventDefault(); return; }
     if(e.code==='F1'){ inputHUD=!inputHUD; e.preventDefault(); return; }
+    if(e.code==='F2'){ toggleGrid(); e.preventDefault(); return; }
+    if(e.code==='F4'){ toggleGridStep(); e.preventDefault(); return; }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
     if(e.code==='ArrowLeft'||e.code==='KeyA') keyLeft=true;
     if(e.code==='ArrowRight'||e.code==='KeyD') keyRight=true;
@@ -221,6 +231,16 @@ function init(){
     breathe:0,dir:1,
     releaseCut:false,releaseTimer:0
   };
+  gridBtn = document.getElementById('btn-grid');
+  stepBtn = document.getElementById('btn-step');
+  const bindBtn = (el, handler)=>{
+    ['click','touchstart'].forEach(ev=>{
+      el.addEventListener(ev,e=>{ e.preventDefault(); e.stopPropagation(); handler(); },{passive:false});
+    });
+  };
+  bindBtn(gridBtn, toggleGrid);
+  bindBtn(stepBtn, toggleGridStep);
+  updateGridButtons();
   resetInput();
 }
 
@@ -496,6 +516,7 @@ function render(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   drawBackground(bgOffset);
   ctx.setTransform(dpr,0,0,dpr,-camX*dpr,-camY*dpr);
+  drawGrid(camX, camY);
   drawPlatforms();
   drawCoins();
   drawPlayer();
@@ -520,6 +541,51 @@ function drawBackground(offset){
       ctx.fill();
     }
   }
+}
+
+function drawGrid(camX, camY){
+  if(!gridEnabled) return;
+  const tile = 60;
+  const step = gridStep;
+  const left = camX - viewWidth/2;
+  const right = camX + viewWidth/2;
+  const top = camY - viewHeight/2;
+  const bottom = camY + viewHeight/2;
+  const startX = Math.floor(left/(tile*step))*step*tile;
+  const endX = Math.ceil(right/(tile*step))*step*tile;
+  const startY = Math.floor(top/(tile*step))*step*tile;
+  const endY = Math.ceil(bottom/(tile*step))*step*tile;
+  ctx.save();
+  ctx.font = '10px sans-serif';
+  for(let x=startX;x<=endX;x+=step*tile){
+    const idx = Math.round(x/tile);
+    const major = idx%10===0;
+    ctx.strokeStyle = major?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.1)';
+    ctx.lineWidth = major?1.5:1;
+    ctx.beginPath();
+    ctx.moveTo(x,startY);
+    ctx.lineTo(x,endY);
+    ctx.stroke();
+    if(major){
+      ctx.fillStyle='rgba(255,255,255,0.3)';
+      ctx.fillText(idx,x+2,startY+12);
+    }
+  }
+  for(let y=startY;y<=endY;y+=step*tile){
+    const idx = Math.round(y/tile);
+    const major = idx%10===0;
+    ctx.strokeStyle = major?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.1)';
+    ctx.lineWidth = major?1.5:1;
+    ctx.beginPath();
+    ctx.moveTo(startX,y);
+    ctx.lineTo(endX,y);
+    ctx.stroke();
+    if(major){
+      ctx.fillStyle='rgba(255,255,255,0.3)';
+      ctx.fillText(idx,startX+2,y+12);
+    }
+  }
+  ctx.restore();
 }
 
 function drawPlatform(pl){
@@ -664,6 +730,23 @@ function drawHUD(camX, camY){
   if(inputHUD){
     ctx.fillText(`L:${leftHeld?1:0} R:${rightHeld?1:0} move:${moveAxis} vx:${p.vx.toFixed(2)} last:${lastInputEvent}`,20,viewHeight-40);
   }
+}
+
+function updateGridButtons(){
+  if(gridBtn) gridBtn.textContent = 'Grid: '+(gridEnabled?'On':'Off');
+  if(stepBtn) stepBtn.textContent = 'Step: '+(gridStep===5?'5×5':'1×1');
+}
+
+function toggleGrid(){
+  gridEnabled = !gridEnabled;
+  localStorage.setItem(GRID_ENABLED_KEY, gridEnabled);
+  updateGridButtons();
+}
+
+function toggleGridStep(){
+  gridStep = gridStep===1?5:1;
+  localStorage.setItem(GRID_STEP_KEY, gridStep);
+  updateGridButtons();
 }
 
 function setupMenu(){

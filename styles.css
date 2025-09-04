@@ -6,3 +6,5 @@ html,body{margin:0;height:100%;background:#0e0f14;color:#eee;font-family:system-
 .menu-screen.hidden{display:none}
 .menu-btn{font-size:24px;padding:12px 24px}
 .difficulty-options{display:flex;flex-direction:column;gap:10px;font-size:24px}
+#debug-controls{position:fixed;top:10px;right:10px;display:flex;flex-direction:column;gap:8px;z-index:5}
+.debug-btn{min-width:60px;min-height:40px;background:rgba(0,0,0,.5);color:#fff;border:1px solid #fff;font-size:14px}
