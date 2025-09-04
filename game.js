@@ -25,6 +25,10 @@ const DIFF_KEY = 'platformer.difficulty.v1';
 // Difficulty multipliers relative to Easy base values
 const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
 
+const FRAMING_KEY = 'platformer.camera.framing.v1';
+let framingYOffsetTiles = parseInt(localStorage.getItem(FRAMING_KEY),10);
+if(![6,5,3,0].includes(framingYOffsetTiles)) framingYOffsetTiles = 5;
+
 const base = {
   maxRunSpeed: 6.0 * 3.5 * 2.20, // rebased from previous Hard
   runAccel: 6.0 * 3.0 * 2.20,
@@ -86,7 +90,7 @@ let lastInputEvent = '';
 
 let inputHUD = false;
 
-const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, anchorY:0.70} };
+const world = { platforms:[], coins:[], player:null, camera:{x:0,y:0, framingYOffsetTiles} };
 let worldStartX = 0, worldEndX = 0, worldMinY = 0, worldMaxY = 0, worldWidthPx = 0;
 let worldMode = 'detected';
 
@@ -831,9 +835,9 @@ function updateCamera(dt){
   const p = world.player;
   const vInst = p.vx*10;
   const lookAhead = Math.min(Math.max(Math.abs(vInst)*0.18,80),260) * p.dir;
-  const anchorY = world.camera.anchorY || 0.5;
+  const offset = (world.camera.framingYOffsetTiles || 0) * tileSize;
   let targetX = p.x + p.w/2 - viewWidth/2 + lookAhead;
-  let targetY = p.y + p.h/2 - viewHeight*anchorY;
+  let targetY = p.y + p.h/2 - viewHeight*0.5 - offset;
   const maxCamX = Math.max(worldStartX, worldEndX - viewWidth);
   const maxCamY = Math.max(worldMinY, worldMaxY - viewHeight);
   targetX = Math.min(Math.max(targetX, worldStartX), maxCamX);
@@ -1065,7 +1069,7 @@ function drawHUD(camX, camY){
   }
   ctx.fillText('Ground ΔY: +4 tiles',20,segment.done?210:170);
   ctx.fillText(`Adj: small coin platforms −4t (moved:${movedCoinPlatforms}, clamped:${clampedCoinPlatforms})`,20,segment.done?230:190);
-  ctx.fillText(`Cam anchorY: ${world.camera.anchorY.toFixed(2)}`,20,segment.done?250:210);
+  ctx.fillText('Cam framing: +6|+5|+3|0 tiles',20,segment.done?250:210);
   ctx.fillText(`Reach V=${reachV.toFixed(0)} H0=${reachH0.toFixed(0)} Hrun=${reachHrun.toFixed(0)} | Fixed:${fixedCoins} | Unreachable:${unreachableCoins}`,
     20,segment.done?270:230);
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
@@ -1107,6 +1111,7 @@ function setupMenu(){
   const settingsBtn = document.getElementById('btn-settings');
   const backBtn = document.getElementById('btn-back');
   const diffRadios = document.querySelectorAll('input[name="difficulty"]');
+  const framingRadios = document.querySelectorAll('input[name="framing"]');
 
   const show = screen=>{
     resetInput(true);
@@ -1127,6 +1132,14 @@ function setupMenu(){
   }));
   const saved = document.querySelector(`input[name="difficulty"][value="${currentDifficulty}"]`);
   if(saved) saved.checked = true;
+
+  framingRadios.forEach(r=>r.addEventListener('change',e=>{
+    const v = parseInt(e.target.value,10);
+    world.camera.framingYOffsetTiles = v;
+    localStorage.setItem(FRAMING_KEY,v);
+  }));
+  const savedFraming = document.querySelector(`input[name="framing"][value="${world.camera.framingYOffsetTiles}"]`);
+  if(savedFraming) savedFraming.checked = true;
 
   window.addEventListener('keydown',e=>{
     if(menu.style.display!=='none'){
