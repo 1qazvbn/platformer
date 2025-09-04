@@ -17,9 +17,9 @@ const DIFF_KEY = 'platformer.difficulty.v1';
 const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
 
 const base = {
-  maxRunSpeed: 6.0 * 3.5, // allow up to ×4 if needed
-  runAccel: 6.0 * 3.0,
-  runDecel: 0.7 // was 0.85 (×2 decel)
+  maxRunSpeed: 6.0 * 3.5 * 2.20, // rebased from previous Hard
+  runAccel: 6.0 * 3.0 * 2.20,
+  runDecel: 0.7 * 2.20
 };
 
 let MAX_RUN_SPEED = base.maxRunSpeed;
@@ -30,6 +30,7 @@ const JUMP_VELOCITY = -35;
 const COYOTE_MS = 100;
 const JUMP_BUFFER_MS = 120;
 const GRAVITY = 1.2;
+const STOP_DIST = 48; // target ground stop distance in px (~0.8 tile)
 
 let currentDifficulty = localStorage.getItem(DIFF_KEY) || 'Easy';
 if(!DIFF_FACTORS[currentDifficulty]) currentDifficulty = 'Easy';
@@ -38,7 +39,9 @@ function applyDifficulty(diff){
   const factor = DIFF_FACTORS[diff] || 1;
   MAX_RUN_SPEED = base.maxRunSpeed * factor;
   RUN_ACCEL = base.runAccel * factor;
-  RUN_DECEL = base.runDecel * factor;
+  const t = dt * 10;
+  const denom = 2 * STOP_DIST - MAX_RUN_SPEED * t;
+  RUN_DECEL = denom > 0 ? (MAX_RUN_SPEED * MAX_RUN_SPEED * t) / denom : MAX_RUN_SPEED;
 }
 
 function randomBlinkInterval(){
