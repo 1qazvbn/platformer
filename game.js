@@ -51,6 +51,10 @@ function applyDifficulty(diff){
   const t = dt * 10;
   const denom = 2 * STOP_DIST - MAX_RUN_SPEED * t;
   RUN_DECEL = denom > 0 ? (MAX_RUN_SPEED * MAX_RUN_SPEED * t) / denom : MAX_RUN_SPEED;
+  if(world.platforms.length){
+    measureReachability();
+    adjustCoinPlatforms();
+  }
 }
 
 function randomBlinkInterval(){
@@ -92,6 +96,9 @@ let gridMaxY = 0;
 let gridCacheKey = '';
 let gridDrawnPrev = false;
 let gridDrawnNow = false;
+
+const REACH_SAFE = 0.85;
+let reachV = 0, reachH0 = 0, reachHrun = 0;
 
 const snap = v => Math.round(v * eff) / eff;
 
@@ -194,6 +201,67 @@ function computeWorldBounds(){
   worldStartX = minX;
   worldEndX = maxX;
   worldWidthPx = worldEndX - worldStartX;
+}
+
+function measureReachability(){
+  const dtl = dt;
+  let y=0, vy=JUMP_VELOCITY, maxY=0;
+  while(true){
+    vy += GRAVITY;
+    y += vy*dtl*10;
+    if(y<maxY) maxY=y;
+    if(y>=0) break;
+  }
+  reachV = -maxY;
+  const simDist = startVx=>{
+    let x=0, y=0, vx=startVx, vy=JUMP_VELOCITY;
+    while(true){
+      vx += AIR_ACCEL;
+      if(vx>MAX_RUN_SPEED) vx=MAX_RUN_SPEED;
+      vy += GRAVITY;
+      x += vx*dtl*10;
+      y += vy*dtl*10;
+      if(y>=0) break;
+    }
+    return x;
+  };
+  reachH0 = simDist(0);
+  reachHrun = simDist(MAX_RUN_SPEED);
+}
+
+function adjustCoinPlatforms(){
+  const ground = world.platforms[0];
+  const pairs = [];
+  for(const c of world.coins){
+    const pl = world.platforms.find(p=>c.x>=p.x && c.x<=p.x+p.w);
+    if(pl) pairs.push({pl,c});
+  }
+  pairs.sort((a,b)=>a.pl.x - b.pl.x);
+  let prev = ground;
+  const maxV = reachV * REACH_SAFE;
+  const maxH = reachHrun * REACH_SAFE;
+  for(const {pl,c} of pairs){
+    const diffY = prev.y - pl.y;
+    if(diffY > maxV){
+      const newY = Math.min(prev.y - maxV, ground.y - pl.h);
+      const dy = newY - pl.y;
+      pl.y = newY;
+      c.y += dy;
+      pl.flash = true;
+    }
+    const prevRight = prev.x + prev.w;
+    const gap = pl.x - prevRight;
+    if(gap > maxH){
+      const newX = pl.x - (gap - maxH);
+      const dx = newX - pl.x;
+      pl.x = newX;
+      c.x += dx;
+      pl.flash = true;
+    }
+    prev = pl;
+  }
+  computeWorldBounds();
+  rebuildGrid();
 }
 
 function rebuildGrid(){
@@ -746,6 +814,11 @@ function drawPlatform(pl){
   ctx.fillStyle = '#4caf50';
   ctx.fillRect(0,-4,pl.w,8);
   for(let x=0;x<pl.w;x+=6){ ctx.beginPath(); ctx.moveTo(x,-4); ctx.lineTo(x+3,0); ctx.lineTo(x+6,-4); ctx.fill(); }
+  if(pl.flash){
+    ctx.fillStyle = 'rgba(0,255,0,0.4)';
+    ctx.fillRect(0,0,pl.w,pl.h);
+    pl.flash = false;
+  }
   ctx.restore();
 }
 
@@ -868,13 +941,15 @@ function drawHUD(camX, camY){
     ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,190);
   }else{
     ctx.fillText(`Grid: ${gridEnabled?'On':'Off'} | Step: ${gridStep===5?'5×5':'1×1'} | DPR: ${dpr.toFixed(2)} | Zoom: ${pageScale.toFixed(2)} | eff: ${eff.toFixed(2)} | ${gridDrawnPrev?'drawn':'not'}`,20,130);
-    ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
+  ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
   }
   ctx.fillText('Ground ΔY: +4 tiles',20,segment.done?210:170);
   ctx.fillText(`Cam anchorY: ${world.camera.anchorY.toFixed(2)}`,20,segment.done?230:190);
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
-    const dbgY = segment.done?250:210;
+    const reachY = segment.done?230:190;
+    ctx.fillText(`Reach: V=${reachV.toFixed(0)} H0=${reachH0.toFixed(0)} Hrun=${reachHrun.toFixed(0)} S=85%`,20,reachY);
+    const dbgY = reachY+20;
     ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,dbgY);
     ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,dbgY+20);
     ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,dbgY+40);
