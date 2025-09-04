@@ -27,9 +27,8 @@ const DIFF_KEY = 'platformer.difficulty.v1';
 // Difficulty multipliers relative to Easy base values
 const DIFF_FACTORS = { Easy:1.00, Normal:1.60, Hard:2.20 };
 
-const SETTINGS_FRAMING_KEY = 'platformer:framingTiles';
 const settings = {
-  framingTiles: parseInt(localStorage.getItem(SETTINGS_FRAMING_KEY), 10),
+  framingTiles: -3,
   camera: {
     followY: true,
     deadzoneUpTiles: 1.0,
@@ -37,7 +36,6 @@ const settings = {
     lerpPerSec: 8.0
   }
 };
-if(!(settings.framingTiles >= -8 && settings.framingTiles <= 8)) settings.framingTiles = -3;
 
 const base = {
   maxRunSpeed: 6.0 * 3.5 * 2.20, // rebased from previous Hard
@@ -530,8 +528,8 @@ function init(){
     if(e.code==='F2'){ toggleGrid(); e.preventDefault(); return; }
     if(e.code==='F4'){ toggleGridStep(); e.preventDefault(); return; }
     if(e.code==='KeyG'){ deadZoneDebug=!deadZoneDebug; e.preventDefault(); return; }
-    if(e.code==='BracketLeft'){ settings.framingTiles=Math.max(-8,settings.framingTiles-1); world.camera.framingYTiles=settings.framingTiles; localStorage.setItem(SETTINGS_FRAMING_KEY,settings.framingTiles); e.preventDefault(); return; }
-    if(e.code==='BracketRight'){ settings.framingTiles=Math.min(8,settings.framingTiles+1); world.camera.framingYTiles=settings.framingTiles; localStorage.setItem(SETTINGS_FRAMING_KEY,settings.framingTiles); e.preventDefault(); return; }
+    if(e.code==='BracketLeft'){ settings.framingTiles=Math.max(-8,settings.framingTiles-1); world.camera.framingYTiles=settings.framingTiles; e.preventDefault(); return; }
+    if(e.code==='BracketRight'){ settings.framingTiles=Math.min(8,settings.framingTiles+1); world.camera.framingYTiles=settings.framingTiles; e.preventDefault(); return; }
     if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
     if(e.code==='ArrowLeft'||e.code==='KeyA') keyLeft=true;
     if(e.code==='ArrowRight'||e.code==='KeyD') keyRight=true;
@@ -1215,7 +1213,6 @@ function setupMenu(){
   const settingsBtn = document.getElementById('btn-settings');
   const backBtn = document.getElementById('btn-back');
   const diffRadios = document.querySelectorAll('input[name="difficulty"]');
-  const framingRadios = document.querySelectorAll('input[name="framing"]');
 
   const show = screen=>{
     resetInput(true);
@@ -1237,14 +1234,6 @@ function setupMenu(){
   const saved = document.querySelector(`input[name="difficulty"][value="${currentDifficulty}"]`);
   if(saved) saved.checked = true;
 
-  framingRadios.forEach(r=>r.addEventListener('change',e=>{
-    const v = parseInt(e.target.value,10);
-    settings.framingTiles = v;
-    world.camera.framingYTiles = v;
-    localStorage.setItem(SETTINGS_FRAMING_KEY,v);
-  }));
-  const savedFraming = document.querySelector(`input[name="framing"][value="${world.camera.framingYTiles}"]`);
-  if(savedFraming) savedFraming.checked = true;
 
   window.addEventListener('keydown',e=>{
     if(menu.style.display!=='none'){
