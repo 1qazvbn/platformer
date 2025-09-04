@@ -7,6 +7,9 @@ const VIRTUAL_WIDTH = 1440;
 const VIRTUAL_HEIGHT = 810;
 const tileSize = 60;
 
+const PARALLAX_ENABLED = true;
+const parallax = { segments:{}, clouds:[] };
+
 let canvas, ctx;
 let dpr = 1, canvasScale = 1, offsetX = 0, offsetY = 0, eff = 1;
 let viewWidth = VIRTUAL_WIDTH, viewHeight = VIRTUAL_HEIGHT;
@@ -242,6 +245,7 @@ function computeWorldBounds(){
   worldStartX = minX;
   worldEndX = maxX;
   worldWidthPx = worldEndX - worldStartX;
+  buildParallaxLayers();
 }
 
 function measureReachability(){
@@ -515,7 +519,7 @@ function drawLoading(){
   ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.setTransform(canvasScale*dpr,0,0,canvasScale*dpr,offsetX*dpr,offsetY*dpr);
-  drawBackground(0);
+  drawParallax(0,0);
   ctx.fillStyle = '#fff';
   ctx.font = '20px sans-serif';
   ctx.fillText('Loading...',20,40);
@@ -550,7 +554,10 @@ function syncCanvas(){
 }
 
 function resize(){
-  if(syncCanvas()) rebuildGrid();
+  if(syncCanvas()){
+    rebuildGrid();
+    buildParallaxLayers();
+  }
 }
 
 function init(){
@@ -957,16 +964,11 @@ function render(){
   if(syncCanvas()) rebuildGrid();
   const camX = snap(world.camera.x);
   const camY = snap(world.camera.y);
-  const bgOffset = snap(camX*0.2);
   const sd = canvasScale * dpr;
   ctx.setTransform(1,0,0,1,0,0);
-  const g = ctx.createLinearGradient(0,0,0,canvas.height);
-  g.addColorStop(0,'#4a90e2');
-  g.addColorStop(1,'#87ceeb');
-  ctx.fillStyle = g;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.setTransform(sd,0,0,sd,offsetX*dpr,offsetY*dpr);
-  drawBackground(bgOffset);
+  drawParallax(camX, camY);
   renderGrid(ctx, camX, camY);
   ctx.setTransform(sd,0,0,sd,offsetX*dpr - camX*sd, offsetY*dpr - camY*sd);
   drawPlatforms();
@@ -987,6 +989,175 @@ function render(){
   }
   drawHUD();
   gridDrawnPrev = gridDrawnNow;
+}
+
+function buildParallaxLayers(){
+  if(!PARALLAX_ENABLED) return;
+  const ground = world.platforms[0];
+  const groundY = ground ? ground.y : viewHeight;
+  const hillsFarY = groundY - tileSize * 3.7;
+  const hillsMidY = groundY - tileSize * 2.7;
+  const shrubsY   = groundY - tileSize * 1.2;
+  const segW = Math.max(2048, Math.ceil(viewWidth * 1.5));
+  const outline = 2.5 / eff;
+
+  const makeHills = (light, shadow)=>{
+    const h = 400;
+    const canvas = document.createElement('canvas');
+    canvas.width = segW; canvas.height = h;
+    const g = canvas.getContext('2d');
+    g.lineWidth = outline;
+    g.lineJoin = g.lineCap = 'round';
+    const base = h * 0.75;
+    const waves = Math.ceil(segW / 300);
+    const path = new Path2D();
+    path.moveTo(0, base);
+    for(let i=0;i<waves;i++){
+      const x0 = i * (segW / waves);
+      const xc = x0 + (segW / waves)/2;
+      const peak = base - 60 - Math.random()*40;
+      const x1 = x0 + (segW / waves);
+      path.quadraticCurveTo(xc, peak, x1, base);
+    }
+    path.lineTo(segW, h);
+    path.lineTo(0, h);
+    path.closePath();
+    g.fillStyle = light; g.fill(path);
+    g.save();
+    g.clip(path);
+    g.fillStyle = shadow;
+    g.fillRect(0, base, segW, h-base);
+    g.restore();
+    g.strokeStyle = '#000';
+    g.stroke(path);
+    return {canvas, width:segW, height:h};
+  };
+
+  const makeShrubs = ()=>{
+    const h = 200;
+    const canvas = document.createElement('canvas');
+    canvas.width = segW; canvas.height = h;
+    const g = canvas.getContext('2d');
+    g.lineWidth = outline;
+    g.lineJoin = g.lineCap = 'round';
+    const base = h;
+    const count = Math.ceil(segW / 160);
+    for(let i=0;i<count;i++){
+      const x = Math.random()*segW;
+      const s = 20 + Math.random()*20;
+      g.save();
+      g.translate(x, base);
+      const path = new Path2D();
+      path.moveTo(-s,0);
+      path.lineTo(0,-s*1.5);
+      path.lineTo(s,0);
+      path.closePath();
+      g.fillStyle = '#3f9d4b';
+      g.fill(path);
+      g.save();
+      g.clip(path);
+      g.fillStyle = '#2f7a3a';
+      g.fillRect(0,-s*1.5,s,s*1.5);
+      g.restore();
+      g.strokeStyle = '#000';
+      g.stroke(path);
+      g.restore();
+    }
+    return {canvas, width:segW, height:h};
+  };
+
+  const hillsFar = makeHills('#2d6a35','#234d2b');
+  const hillsMid = makeHills('#3f9d4b','#2f7a3a');
+  const shrubs   = makeShrubs();
+
+  parallax.segments = {
+    hillsFar:{...hillsFar, baseY: hillsFarY - hillsFar.height, px:0.10, py:0.08},
+    hillsMid:{...hillsMid, baseY: hillsMidY - hillsMid.height, px:0.20, py:0.12},
+    shrubs  :{...shrubs  , baseY: shrubsY   - shrubs.height  , px:0.35, py:0.15}
+  };
+
+  parallax.clouds = [];
+  const cloudCount = 6 + Math.floor(Math.random()*3);
+  for(let i=0;i<cloudCount;i++){
+    parallax.clouds.push({
+      x: Math.random()*(viewWidth+400) - 200,
+      y: 60 + Math.random()*120,
+      r: 20 + Math.random()*20,
+      speed: 6 + Math.random()*6,
+      phase: Math.random()*Math.PI*2
+    });
+  }
+}
+
+function drawParallax(camX, camY){
+  if(!PARALLAX_ENABLED || !parallax.segments.hillsFar){
+    const bgOffset = snap(camX*0.2);
+    drawBackground(bgOffset);
+    return;
+  }
+  const w = viewWidth;
+  const h = viewHeight;
+  const sky = ctx.createLinearGradient(0,0,0,h);
+  sky.addColorStop(0,'#4a90e2');
+  sky.addColorStop(1,'#87ceeb');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0,0,w,h);
+
+  const sunX = w*0.8 - camX*0.05;
+  const sunY = 100 - camY*0.05;
+  const sunR = 80;
+  const grad = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, sunR);
+  grad.addColorStop(0,'#fff5a0');
+  grad.addColorStop(1,'rgba(255,255,0,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, sunR, 0, Math.PI*2);
+  ctx.fill();
+
+  const drawLayer = seg=>{
+    const s = seg;
+    let x = - (camX * s.px) % s.width;
+    if(x>0) x -= s.width;
+    const y = s.baseY - camY * s.py;
+    while(x < w){
+      ctx.drawImage(s.canvas, Math.round(x), Math.round(y));
+      x += s.width;
+    }
+  };
+  drawLayer(parallax.segments.hillsFar);
+  drawLayer(parallax.segments.hillsMid);
+
+  const lw = 2.5 / eff;
+  ctx.lineWidth = lw;
+  ctx.lineJoin = ctx.lineCap = 'round';
+  for(const c of parallax.clouds){
+    c.x += c.speed * dt;
+    const sx = c.x - camX*0.15;
+    const sy = c.y + Math.sin(gameTime*0.5 + c.phase)*5 - camY*0.10;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(-2*c.r,0,c.r,0,Math.PI*2);
+    ctx.arc(-c.r,-c.r*0.6,c.r*1.2,0,Math.PI*2);
+    ctx.arc(0,0,c.r*1.4,0,Math.PI*2);
+    ctx.arc(c.r,-c.r*0.6,c.r*1.2,0,Math.PI*2);
+    ctx.arc(2*c.r,0,c.r,0,Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(180,200,255,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(0,c.r*0.3,2.4*c.r,c.r,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    if(sx > w + 200){
+      c.x = camX*0.15 - 200;
+      c.y = 60 + Math.random()*120;
+    }
+  }
+
+  drawLayer(parallax.segments.shrubs);
 }
 
 function drawBackground(offset){
