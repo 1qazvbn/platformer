@@ -353,6 +353,28 @@ function adjustCoinPlatforms(){
   rebuildGrid();
 }
 
+function lowerCoinPlatforms(){
+  const delta = 4 * tileSize;
+  const minGap = 0.5 * tileSize;
+  for(const pl of world.platforms){
+    const coins = world.coins.filter(c => c.x >= pl.x && c.x <= pl.x + pl.w);
+    if(!coins.length) continue;
+    let targetY = pl.y + delta;
+    for(const other of world.platforms){
+      if(other === pl) continue;
+      if(pl.x < other.x + other.w && pl.x + pl.w > other.x && other.y >= pl.y){
+        const limit = other.y - pl.h - minGap;
+        if(targetY > limit) targetY = limit;
+      }
+    }
+    const dy = targetY - pl.y;
+    if(dy > 0){
+      pl.y = targetY;
+      for(const c of coins) c.y += dy;
+    }
+  }
+}
+
 function rebuildGrid(){
   const tile = 60;
   const step = gridStep;
@@ -522,6 +544,7 @@ function init(){
     {x:595,y:220,t:0,collected:false},
     {x:770,y:150,t:0,collected:false}
   ]);
+  lowerCoinPlatforms();
 
   world.player = {
     x:0,y:groundY-40,w:40,h:40,vx:0,vy:0,onGround:false,
@@ -1034,12 +1057,13 @@ function drawHUD(camX, camY){
   ctx.fillText(`World: ${worldTiles} tiles (${worldMode})`,20,150);
   }
   ctx.fillText('Ground ΔY: +4 tiles',20,segment.done?210:170);
-  ctx.fillText(`Cam anchorY: ${world.camera.anchorY.toFixed(2)}`,20,segment.done?230:190);
+  ctx.fillText('Adj: coin platforms −4 tiles',20,segment.done?230:190);
+  ctx.fillText(`Cam anchorY: ${world.camera.anchorY.toFixed(2)}`,20,segment.done?250:210);
   ctx.fillText(`Reach V=${reachV.toFixed(0)} H0=${reachH0.toFixed(0)} Hrun=${reachHrun.toFixed(0)} | Fixed:${fixedCoins} | Unreachable:${unreachableCoins}`,
-    20,segment.done?250:210);
+    20,segment.done?270:230);
   ctx.fillText('v'+GAME_VERSION, viewWidth-80, viewHeight-20);
   if(debug){
-    const dbgY = segment.done?270:230;
+    const dbgY = segment.done?290:250;
     ctx.fillText(`camX:${camX.toFixed(2)} camY:${camY.toFixed(2)}`,20,dbgY);
     ctx.fillText(`playerX:${p.x.toFixed(2)} playerY:${p.y.toFixed(2)}`,20,dbgY+20);
     ctx.fillText(`dpr:${dpr.toFixed(2)} canvas:${viewWidth}x${viewHeight}`,20,dbgY+40);
