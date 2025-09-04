@@ -134,6 +134,15 @@ let movedCoinPlatforms = 0, clampedCoinPlatforms = 0;
 let levelSeed = 0;
 const lastGen = {seed:0,layers:0,stepX:0,stepY:0};
 
+// Simple platform generator settings
+const PLATFORM_GEN = {
+  totalSpanTilesX: 100,
+  platformLengthTiles: 3,
+  minDx: 2,
+  allowedDeltaY: [1, 0, -1, -2],
+  seed: null
+};
+
 const snap = v => Math.round(v * eff) / eff;
 
 function resetInput(release=false){
@@ -402,103 +411,49 @@ function adjustCoinPlatforms(){
 }
 
 function generateLevel(seed, layers=4){
+  // Deterministic random
   if(seed==null) seed = Math.floor(Math.random()*1e9);
+  PLATFORM_GEN.seed = seed;
   levelSeed = seed;
   lastGen.seed = seed;
-  lastGen.layers = layers;
   let s = seed>>>0;
   const rnd = ()=>{ s = (s*1664525 + 1013904223)>>>0; return s/4294967296; };
 
   const tile = tileSize;
-  const groundDeltaY = 4*tile;
-  const baseGroundY = 300 + groundDeltaY;
-  const playerW = world.player ? world.player.w : 40;
-  const wMin = Math.max(1.5*playerW, 2*tile);
   const h = 20;
-
-  const maxV = reachV * REACH_SAFE_Y;
-  const maxH = reachHrun * REACH_SAFE_X;
-
-  let stepY = reachV * 0.75;
-  let stepX = reachHrun * 0.65;
-  if(currentDifficulty === 'Hard'){
-    stepX *= 1.1;
-    stepY *= 1.05;
-  }
-  stepY = Math.max(2*tile, Math.min(stepY, 6*tile, maxV));
-  stepX = Math.max(3*tile, Math.min(stepX, 10*tile, maxH));
-  lastGen.stepX = stepX;
-  lastGen.stepY = stepY;
+  const baseGroundY = 300 + 4*tile;
+  lastGen.layers = 1;
+  lastGen.stepX = PLATFORM_GEN.minDx * tile;
+  lastGen.stepY = tile;
 
   // reset world
   world.platforms = [];
   world.coins = [];
 
-  // ground
-  const ground = {x:-400,y:baseGroundY,w:1200,h:40,level:0};
+  // starting platform
+  const w = PLATFORM_GEN.platformLengthTiles * tile;
+  const ground = {x:0, y:baseGroundY, w, h, level:0};
   world.platforms.push(ground);
-  const baseTiles = ground.w / tile;
-  const extendLeftTiles = 2 * baseTiles;
-  const extendRightTiles = 10 * baseTiles;
-  ground.x -= extendLeftTiles * tile;
-  ground.w += (extendLeftTiles + extendRightTiles) * tile;
+  world.coins.push({x:ground.x + ground.w/2, y:ground.y - 1.2*tile, t:0, collected:false});
 
-  const levelsY = [];
-  for(let i=0;i<=layers;i++) levelsY.push(baseGroundY - i*stepY);
+  const startLeft = ground.x;
+  const maxSpanPx = PLATFORM_GEN.totalSpanTilesX * tile;
+  let last = ground;
 
-  // backbone
-  let x = (world.spawnCenterX||0) + 2*tile;
-  let prevRight = world.spawnCenterX||0;
-  for(let i=1;i<=layers;i++){
-    if(i===1){
-      let gap = x - prevRight;
-      if(gap>maxH) x = prevRight + maxH;
-    }else{
-      let factor = 0.9 + 0.3*rnd();
-      x = world.platforms[world.platforms.length-1].x + stepX*factor;
-      let prev = world.platforms[world.platforms.length-1];
-      let gap = x - (prev.x + prev.w);
-      if(gap>maxH) x = prev.x + prev.w + maxH;
-    }
-    let w = wMin + Math.round(rnd()*tile);
-    let pl = {x,y:levelsY[i],w,h,level:i};
+  // sequential generation to the right
+  while(last.x + last.w - startLeft < maxSpanPx){
+    const dy = PLATFORM_GEN.allowedDeltaY[Math.floor(rnd()*PLATFORM_GEN.allowedDeltaY.length)];
+    let maxDx = Math.floor(6 - 2*dy); // reach model
+    if(maxDx > 10) maxDx = 10;
+    if(maxDx < 1) maxDx = 1;
+    const minDx = Math.min(PLATFORM_GEN.minDx, maxDx);
+    const dx = minDx + Math.floor(rnd()*(maxDx - minDx + 1));
+    const nx = last.x + last.w + dx*tile;
+    const ny = last.y - dy*tile;
+    const pl = {x:nx, y:ny, w, h, level:0};
     world.platforms.push(pl);
     world.coins.push({x:pl.x + pl.w/2, y:pl.y - 1.2*tile, t:0, collected:false});
-    prevRight = pl.x + pl.w;
-  }
-
-  const backboneCount = world.platforms.length - 1;
-  const extraCount = Math.round(backboneCount * (0.3 + 0.2*rnd()));
-  for(let n=0;n<extraCount;n++){
-    const parent = world.platforms[1 + Math.floor(rnd()*backboneCount)];
-    if(parent.level >= layers) continue;
-    const level = parent.level + 1;
-    const y = levelsY[level];
-    let w = Math.max(wMin, (2 + Math.round(rnd()))*tile);
-    const parentRight = parent.x + parent.w;
-    let gap = stepX * (0.5 + rnd());
-    if(gap>maxH) gap = maxH;
-    let nx = parentRight + gap;
-    let attempts = 0;
-    let valid = true;
-    while(attempts<5){
-      let overlap = false;
-      for(const other of world.platforms){
-        if(nx < other.x + other.w && nx + w > other.x && y < other.y + other.h && y + h > other.y){
-          overlap = true;
-          nx = other.x + other.w + tile;
-          gap = nx - parentRight;
-          if(gap>maxH){ valid=false; };
-          break;
-        }
-      }
-      if(!overlap || !valid) break;
-      attempts++;
-    }
-    if(!valid || gap>maxH) continue;
-    const pl = {x:nx,y,w,h,level};
-    world.platforms.push(pl);
-    world.coins.push({x:pl.x + pl.w/2, y:pl.y - 1.2*tile, t:0, collected:false});
+    last = pl;
   }
 
   adjustCoinPlatforms();
