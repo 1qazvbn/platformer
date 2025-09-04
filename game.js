@@ -8,6 +8,7 @@ const VIRTUAL_HEIGHT = 810;
 const tileSize = 60;
 
 const CLAMP_PLAYER_TO_CAMERA_X = true;
+const CAM_CLAMP_PAD = 4; // пиксели запаса от краёв экрана
 
 const PARALLAX_ENABLED = true;
 const parallax = { segments:{}, clouds:[] };
@@ -671,7 +672,7 @@ function loop(t){
     if(acc>dt) acc=dt;
     updateCamera(delta/1000);
     if(CLAMP_PLAYER_TO_CAMERA_X){
-      clampPlayerToCameraX();
+      world.camera.clampX = clampPlayerToCameraX();
     }else{
       world.camera.clampX = 'none';
     }
@@ -973,23 +974,21 @@ function updateCamera(dt){
 function clampPlayerToCameraX(){
   const p = world.player;
   const camX = world.camera.x;
-  const left = camX;
-  const right = camX + viewWidth - p.w;
+  const left = camX + CAM_CLAMP_PAD;
+  const right = camX + viewWidth - p.w - CAM_CLAMP_PAD;
   if(p.x < left){
     p.x = left;
     p.vx = Math.max(0, p.vx);
     p.releaseCut = false;
-    world.camera.clampX = 'left';
-    return;
+    return 'left';
   }
   if(p.x > right){
     p.x = right;
     p.vx = Math.min(0, p.vx);
     p.releaseCut = false;
-    world.camera.clampX = 'right';
-    return;
+    return 'right';
   }
-  world.camera.clampX = 'none';
+  return 'none';
 }
 
 function rectIntersect(a,b){
