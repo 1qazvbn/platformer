@@ -885,7 +885,7 @@ function generateLevel(seed, layers = 4) {
     x: world.gapStartX + tile,
     y: baseGroundY,
     w: 20 * tile,
-    h: platformH,
+    h: groundH,
     level: 0,
   };
   world.platforms.push(endPlatform);
