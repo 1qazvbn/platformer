@@ -64,19 +64,27 @@
           const addVersion = (u) =>
             self.GAME_VERSION ? `${u}?v=${self.GAME_VERSION}` : u;
           self.BOOT = { script: false, init: false, loop: false, frame: false };
-          self.BOOT.watchdog = setTimeout(() => {
-            if (!self.BOOT.frame) {
-              const reason = !self.BOOT.script
-                ? "version/import"
-                : !self.BOOT.init
-                  ? "world/input init"
-                  : !self.BOOT.loop
-                    ? "loop start"
-                    : "first frame render";
-              showError("Startup timeout: " + reason);
-            }
-          }, 2000);
-          const link = document.getElementById("main-style");
+
+          function startWatchdog() {
+            clearTimeout(self.BOOT.watchdog);
+            self.BOOT.script = false;
+            self.BOOT.init = false;
+            self.BOOT.loop = false;
+            self.BOOT.frame = false;
+            self.BOOT.watchdog = setTimeout(() => {
+              if (!self.BOOT.frame) {
+                const reason = !self.BOOT.script
+                  ? "version/import"
+                  : !self.BOOT.init
+                    ? "world/input init"
+                    : !self.BOOT.loop
+                      ? "loop start"
+                      : "first frame render";
+                showError("Startup timeout: " + reason);
+              }
+            }, 2000);
+          }
+         const link = document.getElementById("main-style");
           function loadScript(src) {
             return new Promise((res, rej) => {
               const s = document.createElement("script");
@@ -134,6 +142,7 @@
           }
 
           window.bootLevel = (level) => {
+            startWatchdog();
             setupPause();
             const levelPath = `levels/level${level}`;
             link.href = addVersion(`${levelPath}/styles.css`);
@@ -205,29 +214,6 @@
       <button id="btn-parallax" class="debug-btn">Parallax: On</button>
       <button id="btn-vfx" class="debug-btn">VFX: On</button>
       <button id="btn-shake" class="debug-btn">Shake: On</button>
-    </div>
-    <div id="menu">
-      <div id="menu-main" class="menu-screen">
-        <button id="btn-start" class="menu-btn">NEW GAME</button>
-        <button id="btn-settings" class="menu-btn">SETTINGS</button>
-      </div>
-      <div id="menu-settings" class="menu-screen hidden">
-        <div class="difficulty-options">
-          <label
-            ><input type="radio" name="difficulty" value="Easy" /> Easy
-            (x1.00)</label
-          >
-          <label
-            ><input type="radio" name="difficulty" value="Normal" /> Normal
-            (x1.60)</label
-          >
-          <label
-            ><input type="radio" name="difficulty" value="Hard" /> Hard
-            (x2.20)</label
-          >
-        </div>
-        <button id="btn-back" class="menu-btn">BACK</button>
-      </div>
     </div>
     <div id="error-overlay"></div>
   </body>
