@@ -239,6 +239,8 @@ const world = {
   gapStartX: 0,
   newPlatformEnd: 0,
   secondMainRightX: 0,
+  gapBridge: null,
+  teleport: null,
   camera: {
     x: 0,
     y: 0,
@@ -630,6 +632,13 @@ function computeWorldBounds() {
     worldMinY = Math.min(worldMinY, c.y);
     worldMaxY = Math.max(worldMaxY, c.y);
   }
+  if (world.teleport) {
+    const t = world.teleport;
+    minX = Math.min(minX, t.x);
+    maxX = Math.max(maxX, t.x + t.w);
+    worldMinY = Math.min(worldMinY, t.y);
+    worldMaxY = Math.max(worldMaxY, t.y + t.h);
+  }
   const p = world.player;
   if (p) {
     minX = Math.min(minX, p.x);
@@ -860,6 +869,8 @@ function generateLevel(seed, layers = 4) {
   // reset world
   world.platforms = [];
   world.coins = [];
+  world.gapBridge = null;
+  world.teleport = null;
 
   // main ground platform
   const anchorX = 0;
@@ -881,6 +892,15 @@ function generateLevel(seed, layers = 4) {
   });
 
   world.gapStartX = ground.x + ground.w;
+  const bridge = {
+    x: world.gapStartX,
+    y: baseGroundY,
+    w: tile,
+    h: groundH,
+    level: 0,
+  };
+  world.platforms.push(bridge);
+  world.gapBridge = bridge;
   const endPlatform = {
     x: world.gapStartX + tile,
     y: baseGroundY,
@@ -1611,6 +1631,7 @@ function update(dt) {
   if (p.onGround) p.releaseCut = false;
   if (!moveAxis && Math.abs(p.vx) < STOP_EPS) p.vx = 0;
   updateCoins(dt);
+  updateBridgeTeleport();
 
   const vInst = Math.abs(p.vx * 10);
   if (vInst > vMax) vMax = vInst;
@@ -1797,6 +1818,40 @@ function updateCoins(dt) {
   }
 }
 
+function updateBridgeTeleport() {
+  const p = world.player;
+  if (!p) return;
+  if (world.gapBridge) {
+    const remaining = world.coins.some((c) => !c.collected);
+    if (!remaining) {
+      const b = world.gapBridge;
+      if (!rectIntersect(p, b)) {
+        const idx = world.platforms.indexOf(b);
+        if (idx >= 0) world.platforms.splice(idx, 1);
+        world.gapBridge = null;
+        world.teleport = {
+          x: b.x,
+          y: b.y - tileSize * 2,
+          w: tileSize,
+          h: tileSize * 2,
+        };
+        computeWorldBounds();
+        rebuildGrid();
+      }
+    }
+  }
+  if (world.teleport && rectIntersect(p, world.teleport)) {
+    const ground = world.platforms[0];
+    p.x = 0;
+    p.y = ground.y - p.h;
+    p.vx = 0;
+    p.vy = 0;
+    p.onGround = false;
+    computeWorldBounds();
+    rebuildGrid();
+  }
+}
+
 function updateCamera(dt) {
   const p = world.player;
   if (!p) return;
@@ -1922,6 +1977,7 @@ function render() {
     offsetY * dpr - camY * sd,
   );
   drawPlatforms();
+  if (world.teleport) drawTeleport(world.teleport);
   drawCoins();
   drawPlayer();
   if (paused) clearVfx();
@@ -2213,6 +2269,12 @@ function drawPlatform(pl) {
 
 function drawPlatforms() {
   for (const pl of world.platforms) drawPlatform(pl);
+}
+
+function drawTeleport(tp) {
+  perf.counts.sprites++;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(tp.x, tp.y, tp.w, tp.h);
 }
 
 function drawCoin(c) {

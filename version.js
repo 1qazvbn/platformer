@@ -1,1 +1,1 @@
-self.GAME_VERSION = "0.1.61";
+self.GAME_VERSION = "0.1.62";
