@@ -70,6 +70,11 @@ const JUMP_BUFFER_MS = 120;
 const GRAVITY = 1.2;
 const STOP_DIST = 48; // target ground stop distance in px (~0.8 tile)
 
+const dashDistanceTiles = 2;
+const dashDuration = 0.14;
+const dashCooldown = 0.35;
+const airDashCount = 1;
+
 let currentDifficulty = localStorage.getItem(DIFF_KEY) || 'Easy';
 if(!DIFF_FACTORS[currentDifficulty]) currentDifficulty = 'Easy';
 
@@ -193,6 +198,25 @@ function startAirReleaseCut(){
   p.vx *= RELEASE_CUT;
   p.releaseCut = true;
   p.releaseTimer = 0;
+}
+
+function startDash(){
+  const p = world.player;
+  if(!p || p.dashing) return;
+  if(p.dashCooldown > 0) return;
+  let axis = (keyRight||gpRight?1:0) - (keyLeft||gpLeft?1:0);
+  if(!p.onGround){
+    if(p.airDash <= 0) return;
+    p.airDash--;
+  }
+  const dir = axis!==0 ? (axis>0?1:-1) : p.dir;
+  p.dir = dir;
+  p.dashing = true;
+  p.dashDir = dir;
+  p.dashTime = 0;
+  p.dashProgress = 0;
+  p.vx = 0;
+  p.vy = 0;
 }
 
 function pollGamepad(){
@@ -740,6 +764,7 @@ function init(){
     if(e.code==='ArrowLeft'||e.code==='KeyA') keyLeft=true;
     if(e.code==='ArrowRight'||e.code==='KeyD') keyRight=true;
     if(e.code==='ArrowUp'||e.code==='KeyW'||e.code==='Space'){ upHeld=true; world.player.jumpBuffer=JUMP_BUFFER_MS; }
+    if(e.code==='ShiftLeft'||e.code==='ShiftRight') startDash();
     if(e.code==='KeyR'){ resetSegment(); resetInput(); }
     if(e.code==='KeyN'){ levelSeed=Date.now(); measureReachability(); generateLevel(levelSeed, lastGen.layers); resetPlayerToGround(); resetInput(true); e.preventDefault(); return; }
     lastInputEvent = 'keydown '+e.code;
@@ -771,7 +796,8 @@ function init(){
     yawning:false,yawnPhase:0,yawnTime:0,yawnDurA:0,yawnDurP:0,yawnDurC:0,
     yawnStretch:0,yawnTilt:0,longBlink:false,
     breathe:0,dir:1,
-    releaseCut:false,releaseTimer:0
+    releaseCut:false,releaseTimer:0,
+    dashing:false,dashDir:1,dashTime:0,dashProgress:0,dashCooldown:0,airDash:airDashCount
   };
   resetPlayerToGround();
   gridBtn = document.getElementById('btn-grid');
@@ -871,6 +897,22 @@ function update(dt){
   p.jumpBuffer-=dt*1000; if(p.jumpBuffer<0) p.jumpBuffer=0;
 
   gameTime += dt;
+
+  if(p.dashCooldown>0){ p.dashCooldown-=dt; if(p.dashCooldown<0) p.dashCooldown=0; }
+  if(p.dashing){
+    const speed = (dashDistanceTiles*tileSize)/dashDuration;
+    const moved = dashMove(p, p.dashDir * speed * dt);
+    p.dashProgress += Math.abs(moved);
+    p.dashTime += dt;
+    if(p.dashTime >= dashDuration || p.dashProgress >= dashDistanceTiles*tileSize - 0.1 || moved === 0){
+      p.dashing=false;
+      p.vx = p.dashDir * MAX_RUN_SPEED;
+      p.vy = 0;
+      if(p.onGround) p.airDash = airDashCount;
+      p.dashCooldown = dashCooldown;
+    }
+    return;
+  }
 
   // Input
   const accel = p.onGround ? RUN_ACCEL : AIR_ACCEL;
@@ -1005,6 +1047,33 @@ function updateYawn(p, dt){
   }
 }
 
+function dashMove(p, dx){
+  if(dx===0) return 0;
+  const startX = p.x;
+  let endX = startX + dx;
+  if(dx>0){
+    for(const pl of world.platforms){
+      if(p.y < pl.y + pl.h && p.y + p.h > pl.y){
+        if(pl.y < p.y + p.h - tileSize*0.25){
+          const stop = pl.x - p.w;
+          if(stop >= startX && stop < endX) endX = stop;
+        }
+      }
+    }
+  }else{
+    for(const pl of world.platforms){
+      if(p.y < pl.y + pl.h && p.y + p.h > pl.y){
+        if(pl.y < p.y + p.h - tileSize*0.25){
+          const stop = pl.x + pl.w;
+          if(stop <= startX && stop > endX) endX = stop;
+        }
+      }
+    }
+  }
+  p.x = endX;
+  return endX - startX;
+}
+
 function moveAndCollide(p, dt){
   p.x += p.vx*dt*10;
   for(const pl of world.platforms){
@@ -1017,7 +1086,7 @@ function moveAndCollide(p, dt){
   let landed=false;
   for(const pl of world.platforms){
     if(rectIntersect(p,pl)){
-      if(p.vy>0){ p.y = pl.y - p.h; p.vy=0; p.onGround=true; p.coyote=COYOTE_MS; landed=true; }
+      if(p.vy>0){ p.y = pl.y - p.h; p.vy=0; p.onGround=true; p.coyote=COYOTE_MS; landed=true; p.airDash=airDashCount; }
       else if(p.vy<0){ p.y = pl.y + pl.h; p.vy=0; }
     }
   }
