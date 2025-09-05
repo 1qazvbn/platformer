@@ -109,6 +109,8 @@ const dashDistanceTiles = 2;
 const dashDuration = 0.14;
 const dashCooldown = 0.35;
 const airDashCount = 1;
+const TELEPORT_TARGET_X = 20;
+const TELEPORT_TARGET_Y = 0;
 
 // Dash VFX/SFX parameters
 let vfxEnabled = true;
@@ -1012,6 +1014,29 @@ function resetPlayerToGround() {
   rebuildGrid();
 }
 
+function teleportPlayerToTarget() {
+  const p = world.player;
+  if (!p) return;
+  p.x = TELEPORT_TARGET_X - p.w / 2;
+  p.y = TELEPORT_TARGET_Y - p.h;
+  p.vx = 0;
+  p.vy = 0;
+  p.onGround = false;
+  p.coyote = 0;
+  p.jumpBuffer = 0;
+  p.releaseCut = false;
+  p.releaseTimer = 0;
+  p.dashing = false;
+  p.dashDir = 1;
+  p.dashTime = 0;
+  p.dashProgress = 0;
+  p.dashCooldown = 0;
+  p.airDash = airDashCount;
+  world.spawnCenterX = TELEPORT_TARGET_X;
+  computeWorldBounds();
+  rebuildGrid();
+}
+
 function lowerCoinPlatforms() {
   const delta = 4 * tileSize;
   const minGap = 0.5 * tileSize;
@@ -1323,14 +1348,13 @@ function init() {
     }),
   );
 
-  world.spawnCenterX = 20;
+  world.spawnCenterX = TELEPORT_TARGET_X;
   measureReachability();
   levelSeed = Date.now();
   generateLevel(levelSeed, 4);
-  const ground = world.platforms[0];
   world.player = {
-    x: 0,
-    y: ground.y - 40,
+    x: TELEPORT_TARGET_X - 20,
+    y: TELEPORT_TARGET_Y - 40,
     w: 40,
     h: 40,
     vx: 0,
@@ -1367,7 +1391,7 @@ function init() {
     dashCooldown: 0,
     airDash: airDashCount,
   };
-  resetPlayerToGround();
+  teleportPlayerToTarget();
   debugControls = document.getElementById("debug-controls");
   setDebug(DEBUG);
   gridBtn = document.getElementById("btn-grid");
@@ -1836,15 +1860,7 @@ function updateBridgeTeleport() {
     }
   }
   if (world.teleport && rectIntersect(p, world.teleport)) {
-    const ground = world.platforms[0];
-    p.x = 0;
-    p.y = ground.y - p.h;
-    p.vx = 0;
-    p.vy = 0;
-    p.onGround = false;
-    world.spawnCenterX = p.x + p.w / 2;
-    computeWorldBounds();
-    rebuildGrid();
+    teleportPlayerToTarget();
   }
 }
 
@@ -1976,6 +1992,7 @@ function render() {
   if (world.teleport) drawTeleport(world.teleport);
   drawCoins();
   drawPlayer();
+  drawTeleportDebugMarker();
   if (paused) clearVfx();
   else drawVfx();
   ctx.setTransform(sd, 0, 0, sd, offsetX * dpr, offsetY * dpr);
@@ -2271,6 +2288,20 @@ function drawTeleport(tp) {
   perf.counts.sprites++;
   ctx.fillStyle = "#000";
   ctx.fillRect(tp.x, tp.y, tp.w, tp.h);
+}
+
+function drawTeleportDebugMarker() {
+  if (!DEBUG) return;
+  const size = 4;
+  const x = TELEPORT_TARGET_X;
+  const y = TELEPORT_TARGET_Y;
+  ctx.strokeStyle = "#f00";
+  ctx.beginPath();
+  ctx.moveTo(x - size, y - size);
+  ctx.lineTo(x + size, y + size);
+  ctx.moveTo(x - size, y + size);
+  ctx.lineTo(x + size, y - size);
+  ctx.stroke();
 }
 
 function drawCoin(c) {
