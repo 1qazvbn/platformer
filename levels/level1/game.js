@@ -2643,7 +2643,29 @@ function downloadSpikes() {
 }
 
 function setupMenu() {
-  const menu = document.getElementById("menu");
+  let menu = document.getElementById("menu");
+  if (!menu) {
+    menu = document.createElement("div");
+    menu.id = "menu";
+    menu.innerHTML = `
+      <div id="menu-main" class="menu-screen">
+        <button id="btn-start" class="menu-btn">Start</button>
+        <button id="btn-settings" class="menu-btn">Settings</button>
+      </div>
+      <div id="menu-settings" class="menu-screen hidden">
+        <div class="difficulty-options">
+          ${Object.keys(DIFF_FACTORS)
+            .map(
+              (d) =>
+                `<label><input type="radio" name="difficulty" value="${d}">${d}</label>`,
+            )
+            .join("")}
+        </div>
+        <button id="btn-back" class="menu-btn">Back</button>
+      </div>
+    `;
+    document.body.appendChild(menu);
+  }
   const mainMenu = document.getElementById("menu-main");
   const settingsMenu = document.getElementById("menu-settings");
   const startBtn = document.getElementById("btn-start");
