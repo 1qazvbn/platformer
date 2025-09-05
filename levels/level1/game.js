@@ -2665,6 +2665,7 @@ function setupMenu() {
       </div>
     `;
     document.body.appendChild(menu);
+    menu.style.display = "none";
   }
   const mainMenu = document.getElementById("menu-main");
   const settingsMenu = document.getElementById("menu-settings");
@@ -2737,5 +2738,5 @@ function setupMenu() {
     }
   });
 
-  show("main");
+  newGame();
 }
