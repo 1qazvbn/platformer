@@ -1,6 +1,6 @@
 {
   "name": "platformer",
-  "version": "0.1.56",
+  "version": "0.1.57",
   "scripts": {
     "lint:js": "eslint .",
     "lint:css": "stylelint styles.css",
@@ -8,7 +8,7 @@
     "test": "npm run lint"
   },
   "devDependencies": {
-    "eslint": "^8.57.0",
+    "eslint": "^8.57.1",
     "stylelint": "^15.10.2",
     "stylelint-config-standard": "^34.0.0"
   }
