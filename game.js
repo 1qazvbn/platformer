@@ -896,7 +896,7 @@ function generateLevel(seed, layers = 4) {
     x: world.gapStartX,
     y: baseGroundY,
     w: tile,
-    h: groundH,
+    h: tile,
     level: 0,
   };
   world.platforms.push(bridge);
@@ -1829,12 +1829,7 @@ function updateBridgeTeleport() {
         const idx = world.platforms.indexOf(b);
         if (idx >= 0) world.platforms.splice(idx, 1);
         world.gapBridge = null;
-        world.teleport = {
-          x: b.x,
-          y: b.y - tileSize * 2,
-          w: tileSize,
-          h: tileSize * 2,
-        };
+        world.teleport = { x: b.x, y: b.y, w: b.w, h: b.h };
         computeWorldBounds();
         rebuildGrid();
       }
@@ -1847,6 +1842,7 @@ function updateBridgeTeleport() {
     p.vx = 0;
     p.vy = 0;
     p.onGround = false;
+    world.spawnCenterX = p.x + p.w / 2;
     computeWorldBounds();
     rebuildGrid();
   }
