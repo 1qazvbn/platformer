@@ -42,7 +42,7 @@ let isReady = false;
 let loader = null;
 const HUD_EXT_KEY = "platformer.debug.hud.extended";
 let hudExtended = localStorage.getItem(HUD_EXT_KEY) === "true";
-let paused = true;
+let paused = false;
 
 const GRID_ENABLED_KEY = "platformer.debug.grid.enabled";
 const GRID_STEP_KEY = "platformer.debug.grid.step";
@@ -1211,7 +1211,6 @@ function start() {
   drawLoading();
   try {
     init();
-    setupMenu();
     if (self.BOOT) self.BOOT.init = true;
     last = performance.now();
     requestAnimationFrame(loop);
@@ -1295,6 +1294,8 @@ function resize() {
 }
 
 function init() {
+  applyDifficulty(currentDifficulty);
+
   // Input
   window.addEventListener("keydown", (e) => {
     if (e.code === "F3") {
@@ -2642,101 +2643,3 @@ function downloadSpikes() {
   URL.revokeObjectURL(url);
 }
 
-function setupMenu() {
-  let menu = document.getElementById("menu");
-  if (!menu) {
-    menu = document.createElement("div");
-    menu.id = "menu";
-    menu.innerHTML = `
-      <div id="menu-main" class="menu-screen">
-        <button id="btn-start" class="menu-btn">Start</button>
-        <button id="btn-settings" class="menu-btn">Settings</button>
-      </div>
-      <div id="menu-settings" class="menu-screen hidden">
-        <div class="difficulty-options">
-          ${Object.keys(DIFF_FACTORS)
-            .map(
-              (d) =>
-                `<label><input type="radio" name="difficulty" value="${d}">${d}</label>`,
-            )
-            .join("")}
-        </div>
-        <button id="btn-back" class="menu-btn">Back</button>
-      </div>
-    `;
-    document.body.appendChild(menu);
-    menu.style.display = "none";
-  }
-  const mainMenu = document.getElementById("menu-main");
-  const settingsMenu = document.getElementById("menu-settings");
-  const startBtn = document.getElementById("btn-start");
-  const settingsBtn = document.getElementById("btn-settings");
-  const backBtn = document.getElementById("btn-back");
-  const diffRadios = document.querySelectorAll('input[name="difficulty"]');
-
-  const show = (screen) => {
-    resetInput(true);
-    mainMenu.classList.toggle("hidden", screen !== "main");
-    settingsMenu.classList.toggle("hidden", screen !== "settings");
-    menu.style.display = "flex";
-    paused = true;
-    if (audioCtx) audioCtx.suspend();
-  };
-
-  const hide = () => {
-    menu.style.display = "none";
-    paused = false;
-    if (audioCtx) audioCtx.resume();
-  };
-
-  const newGame = () => {
-    applyDifficulty(currentDifficulty);
-    score = 0;
-    levelSeed = Date.now();
-    measureReachability();
-    generateLevel(levelSeed, 4);
-    resetPlayerToGround();
-    resetInput();
-    hide();
-  };
-
-  startBtn.addEventListener("click", newGame);
-  settingsBtn.addEventListener("click", () => show("settings"));
-  backBtn.addEventListener("click", () => show("main"));
-
-  diffRadios.forEach((r) =>
-    r.addEventListener("change", (e) => {
-      currentDifficulty = e.target.value;
-      localStorage.setItem(DIFF_KEY, currentDifficulty);
-      resetInput();
-    }),
-  );
-  const saved = document.querySelector(
-    `input[name="difficulty"][value="${currentDifficulty}"]`,
-  );
-  if (saved) saved.checked = true;
-
-  window.addEventListener("keydown", (e) => {
-    if (menu.style.display !== "none") {
-      if (!mainMenu.classList.contains("hidden")) {
-        if (e.code === "Enter") {
-          newGame();
-          e.preventDefault();
-        } else if (e.code === "Escape") {
-          hide();
-          e.preventDefault();
-        }
-      } else {
-        if (e.code === "Escape" || e.code === "Backspace") {
-          show("main");
-          e.preventDefault();
-        }
-      }
-    } else if (e.code === "Escape") {
-      show("main");
-      e.preventDefault();
-    }
-  });
-
-  newGame();
-}
