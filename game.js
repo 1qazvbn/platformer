@@ -109,7 +109,7 @@ const dashDistanceTiles = 2;
 const dashDuration = 0.14;
 const dashCooldown = 0.35;
 const airDashCount = 1;
-const LEVEL_START_PX = { x: 20, y: 0 }; // world space
+const LEVEL_START_CENTER_X = 20; // world space
 
 // Dash VFX/SFX parameters
 let vfxEnabled = true;
@@ -261,6 +261,11 @@ let worldStartX = 0,
   worldMaxY = 0,
   worldWidthPx = 0;
 let worldMode = "detected";
+
+function getLevelStartWorldPos() {
+  const main = world.platforms[0];
+  return { x: LEVEL_START_CENTER_X, y: main ? main.y : 0 };
+}
 
 const gridCanvas = document.createElement("canvas");
 let gridCtx = gridCanvas.getContext("2d");
@@ -1000,22 +1005,24 @@ function generateLevel(seed, layers = 4) {
 }
 
 function resetPlayerToGround() {
-  teleportPlayerToTarget(false);
+  teleportPlayerToTarget();
 }
 
 function placePlayerAtLevelStart(p) {
-  p.x = LEVEL_START_PX.x - p.w / 2;
-  p.y = LEVEL_START_PX.y - p.h;
+  const start = getLevelStartWorldPos();
+  p.x = start.x - p.w / 2;
+  p.y = start.y - p.h;
   for (let i = 0; i < 2; i++) {
     if (world.platforms.some((pl) => rectIntersect(p, pl))) p.y -= 1;
     else break;
   }
+  return start;
 }
 
 function teleportPlayerToTarget(freeze = true) {
   const p = world.player;
   if (!p) return;
-  placePlayerAtLevelStart(p);
+  const start = placePlayerAtLevelStart(p);
   p.vx = 0;
   p.vy = 0;
   p.onGround = false;
@@ -1030,7 +1037,7 @@ function teleportPlayerToTarget(freeze = true) {
   p.dashCooldown = 0;
   p.airDash = airDashCount;
   if (freeze) p.ghostFrames = 1;
-  world.spawnCenterX = LEVEL_START_PX.x;
+  world.spawnCenterX = start.x;
   computeWorldBounds();
   snapCameraToPlayer();
   rebuildGrid();
@@ -1394,13 +1401,13 @@ function init() {
     }),
   );
 
-  world.spawnCenterX = LEVEL_START_PX.x;
   measureReachability();
   levelSeed = Date.now();
   generateLevel(levelSeed, 4);
+  const startPos = getLevelStartWorldPos();
   world.player = {
-    x: LEVEL_START_PX.x - 20,
-    y: LEVEL_START_PX.y - 40,
+    x: startPos.x - 20,
+    y: startPos.y - 40,
     w: 40,
     h: 40,
     vx: 0,
@@ -1438,7 +1445,7 @@ function init() {
     airDash: airDashCount,
     ghostFrames: 0,
   };
-  teleportPlayerToTarget(false);
+  teleportPlayerToTarget();
   debugControls = document.getElementById("debug-controls");
   setDebug(DEBUG);
   gridBtn = document.getElementById("btn-grid");
@@ -2349,8 +2356,7 @@ function drawTeleport(tp) {
 function drawTeleportDebugMarker() {
   if (!DEBUG) return;
   const size = 4;
-  const x = LEVEL_START_PX.x;
-  const y = LEVEL_START_PX.y;
+  const { x, y } = getLevelStartWorldPos();
   ctx.strokeStyle = "#f00";
   ctx.beginPath();
   ctx.moveTo(x - size, y - size);
