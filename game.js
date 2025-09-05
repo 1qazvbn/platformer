@@ -261,7 +261,7 @@ const lastGen = { seed: 0, layers: 0, stepX: 0, stepY: 0 };
 const PLATFORM_GEN = {
   mainBackwardTiles: 20,
   mainForwardTiles: 300,
-  mainThicknessTiles: 1,
+  mainThicknessTiles: 3,
   platformLengthTiles: 3,
   minDx: 2,
   bandBottomOffset: 2,
@@ -818,7 +818,8 @@ function generateLevel(seed, layers = 4) {
   };
 
   const tile = tileSize;
-  const h = PLATFORM_GEN.mainThicknessTiles * PLATFORM_HEIGHT;
+  const groundH = PLATFORM_GEN.mainThicknessTiles * PLATFORM_HEIGHT;
+  const platformH = PLATFORM_HEIGHT;
   const w = PLATFORM_GEN.platformLengthTiles * tile;
   const baseGroundY = 300 + 4 * tile;
   lastGen.layers = 1;
@@ -837,7 +838,7 @@ function generateLevel(seed, layers = 4) {
     x: leftBound,
     y: baseGroundY,
     w: rightBound - leftBound,
-    h,
+    h: groundH,
     level: 0,
   };
   world.platforms.push(ground);
@@ -894,7 +895,7 @@ function generateLevel(seed, layers = 4) {
       const dx = minDx + Math.floor(rnd() * (maxDx - minDx + 1));
       const nx = prev.x + prev.w + dx * tile;
       const ny = tileToY(newY);
-      const pl = { x: nx, y: ny, w, h, level: 0 };
+      const pl = { x: nx, y: ny, w, h: platformH, level: 0 };
       if (pl.x < leftBound || pl.x + pl.w > rightBound) continue;
       if (!isReachable(dx, prev.yTile, newY, mainYTile)) continue;
       let overlap = false;
@@ -2109,15 +2110,18 @@ function renderGrid(ctx, camX, camY) {
 function drawPlatform(pl) {
   ctx.save();
   ctx.translate(pl.x, pl.y);
+  const tileH = PLATFORM_HEIGHT;
   ctx.lineWidth = 3;
   ctx.strokeStyle = "#000";
   ctx.fillStyle = "#7b4f28";
   ctx.fillRect(0, 0, pl.w, pl.h);
+  for (let y = 0; y < pl.h; y += tileH) {
+    ctx.fillStyle = "#8e5b32";
+    ctx.fillRect(0, y, pl.w, tileH / 2);
+    ctx.fillStyle = "#5e3a1a";
+    ctx.fillRect(0, y + tileH / 2, pl.w, tileH / 2);
+  }
   ctx.strokeRect(0, 0, pl.w, pl.h);
-  ctx.fillStyle = "#8e5b32";
-  ctx.fillRect(0, 0, pl.w, pl.h / 2);
-  ctx.fillStyle = "#5e3a1a";
-  ctx.fillRect(0, pl.h / 2, pl.w, pl.h / 2);
   ctx.fillStyle = "#4caf50";
   ctx.fillRect(0, -4, pl.w, 8);
   for (let x = 0; x < pl.w; x += 6) {
