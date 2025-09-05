@@ -254,10 +254,12 @@ let worldStartX = 0,
   worldWidthPx = 0;
 let worldMode = "detected";
 
-let gridSegments = [];
-let gridMinY = 0;
-let gridMaxY = 0;
-let gridCacheKey = "";
+const gridCanvas = document.createElement("canvas");
+let gridCtx = gridCanvas.getContext("2d");
+gridCtx.imageSmoothingEnabled = false;
+let gridOriginX = 0;
+let gridOriginY = 0;
+const gridCache = { tile: 0, scale: 0, step: 0, camTileX: null, camTileY: null };
 let gridDrawnPrev = false;
 let gridDrawnNow = false;
 
@@ -1014,86 +1016,72 @@ function lowerCoinPlatforms() {
 }
 
 function rebuildGrid() {
-  const tile = 60;
+  gridCache.camTileX = null;
+}
+
+function buildGrid(camTileX, camTileY) {
+  const tile = tileSize;
+  const scale = canvasScale;
   const step = gridStep;
-  const startX = Math.floor(worldStartX / (step * tile)) * step * tile;
-  const endX = Math.ceil(worldEndX / (step * tile)) * step * tile;
-  worldWidthPx = endX - startX;
-  const fallbackTiles = 720;
-  const padTiles = Math.max(
-    fallbackTiles,
-    Math.ceil((viewHeight / tile) * 1.5),
-  );
-  const pad = padTiles * tile;
-  let minY = worldMinY - pad;
-  let maxY = worldMaxY + pad;
-  const needed = 1440 * tile;
-  if (maxY - minY < needed) {
-    const extra = (needed - (maxY - minY)) / 2;
-    minY -= extra;
-    maxY += extra;
+  const sd = scale * dpr;
+  const pad = 2 * tile;
+  const width = viewWidth + pad * 2;
+  const height = viewHeight + pad * 2;
+
+  gridCache.tile = tile;
+  gridCache.scale = scale;
+  gridCache.step = step;
+  gridCache.camTileX = camTileX;
+  gridCache.camTileY = camTileY;
+
+  gridCanvas.width = Math.max(1, Math.round(width * sd));
+  gridCanvas.height = Math.max(1, Math.round(height * sd));
+  gridCtx = gridCanvas.getContext("2d");
+  gridCtx.imageSmoothingEnabled = false;
+  gridCtx.clearRect(0, 0, gridCanvas.width, gridCanvas.height);
+  gridCtx.lineWidth = 1;
+  gridCtx.font = `${12 * sd}px sans-serif`;
+  gridCtx.textBaseline = "top";
+
+  gridOriginX = (camTileX - 2) * tile;
+  gridOriginY = (camTileY - 2) * tile;
+
+  const startX = gridOriginX;
+  const endX = gridOriginX + width;
+  const startY = gridOriginY;
+  const endY = gridOriginY + height;
+  const stepWorld = step * tile;
+
+  for (let x = Math.ceil(startX / stepWorld) * stepWorld; x <= endX; x += stepWorld) {
+    const idx = Math.round(x / tile);
+    const major = idx % 10 === 0;
+    const color = major ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.25)";
+    const px = Math.round((x - gridOriginX) * sd) + 0.5;
+    gridCtx.strokeStyle = color;
+    gridCtx.beginPath();
+    gridCtx.moveTo(px, 0);
+    gridCtx.lineTo(px, gridCanvas.height);
+    gridCtx.stroke();
+    if (major) {
+      gridCtx.fillStyle = color;
+      gridCtx.fillText(idx, px + 2, 2);
+    }
   }
-  minY = Math.floor(minY / (step * tile)) * step * tile;
-  maxY = Math.ceil(maxY / (step * tile)) * step * tile;
-  gridMinY = minY;
-  gridMaxY = maxY;
-  const height = maxY - minY;
-  const baseThin = Math.ceil(eff) / eff;
-  const baseBold = Math.ceil(2 * eff) / eff;
-  const key = [
-    gridEnabled,
-    step,
-    tile,
-    dpr,
-    canvasScale,
-    startX,
-    endX,
-    minY,
-    maxY,
-  ].join("|");
-  if (key === gridCacheKey) return;
-  gridCacheKey = key;
-  gridSegments = [];
-  if (!gridEnabled) return;
-  const SEG_W = 4096;
-  for (let sx = startX; sx < endX; sx += SEG_W) {
-    const segW = Math.min(SEG_W, endX - sx);
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(segW * dpr));
-    canvas.height = Math.max(1, Math.round(height * dpr));
-    const g = canvas.getContext("2d");
-    g.imageSmoothingEnabled = false;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.translate(-sx, -minY);
-    g.font = "12px sans-serif";
-    g.textBaseline = "top";
-    const vxStart = Math.ceil(sx / (step * tile)) * step * tile;
-    for (let x = vxStart; x <= sx + segW; x += step * tile) {
-      const idx = Math.round(x / tile);
-      const major = idx % 10 === 0;
-      const color = major ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.25)";
-      const thickness = major ? baseBold : baseThin;
-      const lx = snap(x);
-      g.fillStyle = color;
-      g.fillRect(lx, minY, thickness, height);
-      if (major) {
-        g.fillText(idx, lx + 2, minY + 2);
-      }
+
+  for (let y = Math.ceil(startY / stepWorld) * stepWorld; y <= endY; y += stepWorld) {
+    const idx = Math.round(y / tile);
+    const major = idx % 10 === 0;
+    const color = major ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.25)";
+    const py = Math.round((y - gridOriginY) * sd) + 0.5;
+    gridCtx.strokeStyle = color;
+    gridCtx.beginPath();
+    gridCtx.moveTo(0, py);
+    gridCtx.lineTo(gridCanvas.width, py);
+    gridCtx.stroke();
+    if (major) {
+      gridCtx.fillStyle = color;
+      gridCtx.fillText(idx, 2, py + 2);
     }
-    const hyStart = Math.ceil(minY / (step * tile)) * step * tile;
-    for (let y = hyStart; y <= maxY; y += step * tile) {
-      const idx = Math.round(y / tile);
-      const major = idx % 10 === 0;
-      const color = major ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.25)";
-      const thickness = major ? baseBold : baseThin;
-      const ly = snap(y);
-      g.fillStyle = color;
-      g.fillRect(sx, ly, segW, thickness);
-      if (major) {
-        g.fillText(idx, sx + 2, ly + 2);
-      }
-    }
-    gridSegments.push({ canvas, x: sx, w: segW });
   }
 }
 
@@ -1206,7 +1194,7 @@ function init() {
       return;
     }
     if (e.code === "F2") {
-      toggleGrid();
+      deadZoneDebug = !deadZoneDebug;
       e.preventDefault();
       return;
     }
@@ -1216,7 +1204,7 @@ function init() {
       return;
     }
     if (e.code === "KeyG") {
-      deadZoneDebug = !deadZoneDebug;
+      toggleGrid();
       e.preventDefault();
       return;
     }
@@ -2137,52 +2125,32 @@ function drawBackground(offset) {
 }
 
 function renderGrid(ctx, camX, camY) {
-  let drawn = false;
-  if (!gridEnabled || !gridSegments.length) {
+  if (!gridEnabled) {
     gridDrawnNow = false;
     return;
   }
-  const prevSmooth = ctx.imageSmoothingEnabled;
-  ctx.imageSmoothingEnabled = false;
-  const sd = canvasScale * dpr;
-  ctx.setTransform(
-    sd,
-    0,
-    0,
-    sd,
-    offsetX * dpr - camX * sd,
-    offsetY * dpr - camY * sd,
-  );
-  const viewStartX = camX;
-  const viewEndX = camX + viewWidth;
-  const viewStartY = camY;
-  const viewEndY = camY + viewHeight;
-  for (const seg of gridSegments) {
-    const segEndX = seg.x + seg.w;
-    if (segEndX <= viewStartX || seg.x >= viewEndX) continue;
-    const drawStartX = Math.max(seg.x, viewStartX);
-    const drawEndX = Math.min(segEndX, viewEndX);
-    const srcX = drawStartX - seg.x;
-    const drawW = drawEndX - drawStartX;
-    const drawStartY = Math.max(gridMinY, viewStartY);
-    const drawEndY = Math.min(gridMaxY, viewEndY);
-    const srcY = drawStartY - gridMinY;
-    const drawH = drawEndY - drawStartY;
-    ctx.drawImage(
-      seg.canvas,
-      srcX * dpr,
-      srcY * dpr,
-      drawW * dpr,
-      drawH * dpr,
-      drawStartX,
-      drawStartY,
-      drawW,
-      drawH,
-    );
-    drawn = true;
+  const camTileX = Math.floor(camX / tileSize);
+  const camTileY = Math.floor(camY / tileSize);
+  if (
+    gridCache.tile !== tileSize ||
+    gridCache.scale !== canvasScale ||
+    gridCache.step !== gridStep ||
+    gridCache.camTileX !== camTileX ||
+    gridCache.camTileY !== camTileY
+  ) {
+    buildGrid(camTileX, camTileY);
   }
+  const sd = canvasScale * dpr;
+  const dx = Math.round((gridOriginX - camX) * sd) + offsetX * dpr;
+  const dy = Math.round((gridOriginY - camY) * sd) + offsetY * dpr;
+  const prevSmooth = ctx.imageSmoothingEnabled;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(gridCanvas, dx, dy);
   ctx.imageSmoothingEnabled = prevSmooth;
-  gridDrawnNow = drawn;
+  ctx.restore();
+  gridDrawnNow = true;
 }
 
 function drawPlatform(pl) {
