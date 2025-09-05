@@ -142,19 +142,21 @@ const PLATFORM_GEN = {
   mainThicknessTiles: 1,
   platformLengthTiles: 3,
   minDx: 2,
-  spawnCount: 50,
+  bandBottomOffset: 2,
+  bandTopOffset: 4,
+  maxAttempts: 20,
   seed: null
 };
 
 const snap = v => Math.round(v * eff) / eff;
 
-function maxReachX(dy){
-  return Math.min(6 - 2*dy, 10);
-}
-
-function isReachable(dx, dy){
-  if(dy <= 0) return false;
+function isReachable(dx, prevY, newY, mainY){
+  const dy = newY - prevY;
+  if(newY < mainY + 1) return false;
+  if(dy > 1) return false;
   if(dy === 1) return dx <= 6;
+  if(dy === 0) return dx <= 6;
+  if(dy === -1) return dx <= 8;
   return false;
 }
 
@@ -463,22 +465,46 @@ function generateLevel(seed, layers=4){
   world.platforms.push(ground);
   world.coins.push({x:anchorX + w/2, y:ground.y - 1.2*tile, t:0, collected:false});
 
-  let last = {x:anchorX, y:baseGroundY, w, h, level:0};
+  const mainYTile = Math.round(baseGroundY / tile);
+  const bandBottom = mainYTile + PLATFORM_GEN.bandBottomOffset;
+  const bandTop = mainYTile + PLATFORM_GEN.bandTopOffset;
+  const tileToY = ty => baseGroundY - (ty - mainYTile) * tile;
 
-  for(let spawned=0; spawned<PLATFORM_GEN.spawnCount; spawned++){
+  let prev = {x:anchorX, yTile:mainYTile, w:0};
+  let currY = mainYTile;
+
+  while(true){
+    let minDx = PLATFORM_GEN.minDx;
+    if(prev.x + prev.w + minDx*tile + w > rightBound){
+      if(prev.x + prev.w + tile + w > rightBound) break;
+      minDx = 1;
+    }
+
+    const headClearPrev = hasHeadClearance(prev.x, tileToY(prev.yTile), prev.w);
+    let dy;
+    if(currY > bandTop){
+      dy = -1;
+    }else if(currY < bandBottom){
+      dy = headClearPrev ? 1 : 0;
+    }else{
+      const r = rnd();
+      if(r < 0.5) dy = -1; else if(r < 0.8) dy = 0; else dy = headClearPrev ? 1 : 0;
+    }
+
+    let newY = currY + dy;
+    if(dy === -1 && newY < mainYTile + 1){ dy = 0; newY = currY; }
+
+    let maxDx = dy === -1 ? 8 : 6;
+    if(minDx > maxDx) minDx = maxDx;
+
     let placed = false;
-    for(let attempts=0; attempts<20 && !placed; attempts++){
-      const maxDx = 6;
-      const minDx = Math.min(PLATFORM_GEN.minDx, maxDx);
+    for(let attempts=0; attempts<PLATFORM_GEN.maxAttempts && !placed; attempts++){
       const dx = minDx + Math.floor(rnd()*(maxDx - minDx + 1));
-      if(!isReachable(dx,1)) continue;
-      const nx = last.x + last.w + dx*tile;
-      if(nx + w > rightBound){ placed = false; break; }
-      const ny = last.y - tile;
+      const nx = prev.x + prev.w + dx*tile;
+      const ny = tileToY(newY);
       const pl = {x:nx, y:ny, w, h, level:0};
-      // bounds check
       if(pl.x < leftBound || pl.x + pl.w > rightBound) continue;
-      // collision check
+      if(!isReachable(dx, prev.yTile, newY, mainYTile)) continue;
       let overlap = false;
       for(const other of world.platforms){
         if(pl.x < other.x + other.w && pl.x + pl.w > other.x && pl.y < other.y + other.h && pl.y + pl.h > other.y){
@@ -487,11 +513,12 @@ function generateLevel(seed, layers=4){
         }
       }
       if(overlap) continue;
-      if(!hasHeadClearance(last.x, last.y, last.w)) break;
+      if(!headClearPrev) { placed = false; break; }
       if(!hasHeadClearance(pl.x, pl.y, pl.w)) continue;
       world.platforms.push(pl);
       world.coins.push({x:pl.x + pl.w/2, y:pl.y - 1.2*tile, t:0, collected:false});
-      last = pl;
+      prev = {x:pl.x, yTile:newY, w:pl.w};
+      currY = newY;
       placed = true;
     }
     if(!placed) break;
