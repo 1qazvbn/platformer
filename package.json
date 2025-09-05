@@ -1,6 +1,6 @@
 {
   "name": "platformer",
-  "version": "0.1.59",
+  "version": "0.1.60",
   "scripts": {
     "lint:js": "eslint .",
     "lint:css": "stylelint styles.css",
