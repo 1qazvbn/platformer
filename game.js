@@ -2361,14 +2361,27 @@ function setupMenu() {
     settingsMenu.classList.toggle("hidden", screen !== "settings");
     menu.style.display = "flex";
     paused = true;
+    if (audioCtx) audioCtx.suspend();
   };
 
-  startBtn.addEventListener("click", () => {
-    applyDifficulty(currentDifficulty);
-    resetInput();
+  const hide = () => {
     menu.style.display = "none";
     paused = false;
-  });
+    if (audioCtx) audioCtx.resume();
+  };
+
+  const newGame = () => {
+    applyDifficulty(currentDifficulty);
+    score = 0;
+    levelSeed = Date.now();
+    measureReachability();
+    generateLevel(levelSeed, 4);
+    resetPlayerToGround();
+    resetInput();
+    hide();
+  };
+
+  startBtn.addEventListener("click", newGame);
   settingsBtn.addEventListener("click", () => show("settings"));
   backBtn.addEventListener("click", () => show("main"));
 
@@ -2388,10 +2401,10 @@ function setupMenu() {
     if (menu.style.display !== "none") {
       if (!mainMenu.classList.contains("hidden")) {
         if (e.code === "Enter") {
-          applyDifficulty(currentDifficulty);
-          resetInput();
-          menu.style.display = "none";
-          paused = false;
+          newGame();
+          e.preventDefault();
+        } else if (e.code === "Escape") {
+          hide();
           e.preventDefault();
         }
       } else {
@@ -2400,6 +2413,9 @@ function setupMenu() {
           e.preventDefault();
         }
       }
+    } else if (e.code === "Escape") {
+      show("main");
+      e.preventDefault();
     }
   });
 
