@@ -27,11 +27,11 @@
   }
 
   function startLevel(level) {
-    localStorage.setItem('game.activeLevel', level);
-    const params = new URLSearchParams(location.search);
-    params.set('level', level);
-    history.replaceState(null, '', '?' + params.toString());
-    location.reload();
+    active = false;
+    document.removeEventListener('keydown', onKeyDown);
+    starfield.stop();
+    menu.remove();
+    bootLevel(level);
   }
 
   buttons.forEach((b, i) => {
@@ -42,7 +42,7 @@
     });
   });
 
-  document.addEventListener('keydown', (e) => {
+  function onKeyDown(e) {
     if (e.key === '1') {
       selected = 0;
       updateSelection();
@@ -60,14 +60,17 @@
     } else if (e.key === 'Enter') {
       startLevel(buttons[selected].dataset.level);
     }
-  });
+  }
+  document.addEventListener('keydown', onKeyDown);
 
   let gpIndex = null;
   let gpPrev = { up: false, down: false, start: false };
   window.addEventListener('gamepadconnected', (e) => {
     gpIndex = e.gamepad.index;
   });
+  let active = true;
   function pollGamepad() {
+    if (!active) return;
     if (gpIndex !== null) {
       const gp = navigator.getGamepads()[gpIndex];
       if (gp) {

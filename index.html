@@ -55,13 +55,12 @@
       window.onunhandledrejection = (e) => {
         showError(e.reason);
       };
+      const ALLOW_DEV_DEEPLINK = false;
       (function () {
         try {
           if (typeof self.GAME_VERSION === "undefined")
             throw new Error("version.js failed to load");
           document.title = `Platformer — v${self.GAME_VERSION}`;
-          const params = new URLSearchParams(location.search);
-          let level = params.get("level") || localStorage.getItem("game.activeLevel");
           const addVersion = (u) =>
             self.GAME_VERSION ? `${u}?v=${self.GAME_VERSION}` : u;
           self.BOOT = { script: false, init: false, loop: false, frame: false };
@@ -87,7 +86,55 @@
               document.head.appendChild(s);
             });
           }
-          if (level) {
+
+          // remove stored level references
+          for (const store of [localStorage, sessionStorage]) {
+            for (const k of Object.keys(store)) {
+              if (/level/i.test(k)) store.removeItem(k);
+            }
+          }
+
+          // strip level-related params and hashes
+          const url = new URL(location.href);
+          url.searchParams.delete("level");
+          if (!ALLOW_DEV_DEEPLINK) url.searchParams.delete("dev-start");
+          if (/level/i.test(url.hash)) url.hash = "";
+          history.replaceState(null, "", url.pathname + (url.search ? url.search : ""));
+
+          function setupPause() {
+            if (document.getElementById("pause-overlay")) return;
+            const overlay = document.createElement("div");
+            overlay.id = "pause-overlay";
+            Object.assign(overlay.style, {
+              position: "fixed",
+              inset: "0",
+              display: "none",
+              background: "rgba(0,0,0,0.7)",
+              alignItems: "center",
+              justifyContent: "center",
+            });
+            const btn = document.createElement("button");
+            btn.textContent = "В меню";
+            btn.style.fontSize = "20px";
+            btn.addEventListener("click", returnToMenu);
+            overlay.appendChild(btn);
+            document.body.appendChild(overlay);
+            document.addEventListener(
+              "keydown",
+              (e) => {
+                if (e.key === "Escape") {
+                  e.stopImmediatePropagation();
+                  e.preventDefault();
+                  overlay.style.display =
+                    overlay.style.display === "flex" ? "none" : "flex";
+                }
+              },
+              true,
+            );
+          }
+
+          window.bootLevel = (level) => {
+            setupPause();
             const levelPath = `levels/level${level}`;
             link.href = addVersion(`${levelPath}/styles.css`);
             loadScript(addVersion(`${levelPath}/game.js`))
@@ -102,6 +149,17 @@
                 console.error(err);
                 showError(err);
               });
+          };
+
+          window.returnToMenu = () => {
+            history.replaceState(null, "", location.pathname);
+            location.reload();
+          };
+
+          const params = new URLSearchParams(location.search);
+          const devStart = ALLOW_DEV_DEEPLINK ? params.get("dev-start") : null;
+          if (devStart) {
+            bootLevel(devStart);
           } else {
             link.href = addVersion(`ui/menu/styles.css`);
             loadScript(addVersion(`ui/menu/starfield.js`))
