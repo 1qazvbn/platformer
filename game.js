@@ -13,6 +13,8 @@ const PLATFORM_HEIGHT = 20;
 
 const CLAMP_PLAYER_TO_CAMERA_X = true;
 
+let cameraRightClamp = "gapStart";
+
 let parallaxEnabled = true;
 const parallax = { segments: {}, clouds: [] };
 
@@ -234,6 +236,8 @@ const world = {
   coins: [],
   player: null,
   spawnCenterX: 0,
+  gapStartX: 0,
+  newPlatformEnd: 0,
   camera: {
     x: 0,
     y: 0,
@@ -279,7 +283,7 @@ const lastGen = { seed: 0, layers: 0, stepX: 0, stepY: 0 };
 const PLATFORM_GEN = {
   mainBackwardTiles: 20,
   mainForwardTiles: 300,
-  mainThicknessTiles: 3,
+  mainThicknessTiles: 60,
   platformLengthTiles: 3,
   minDx: 2,
   bandBottomOffset: 2,
@@ -874,6 +878,17 @@ function generateLevel(seed, layers = 4) {
     t: 0,
     collected: false,
   });
+
+  world.gapStartX = ground.x + ground.w;
+  const endPlatform = {
+    x: world.gapStartX + tile,
+    y: baseGroundY,
+    w: 20 * tile,
+    h: platformH,
+    level: 0,
+  };
+  world.platforms.push(endPlatform);
+  world.newPlatformEnd = endPlatform.x + endPlatform.w;
 
   const mainYTile = Math.round(baseGroundY / tile);
   const bandBottom = mainYTile + PLATFORM_GEN.bandBottomOffset;
@@ -1791,7 +1806,12 @@ function updateCamera(dt) {
     worldStartX,
     world.spawnCenterX - viewWidth / 2,
   );
-  const maxCamX = Math.max(worldStartX, worldEndX - viewWidth);
+  let clampRight = worldEndX;
+  if (cameraRightClamp === "gapStart")
+    clampRight = Math.min(clampRight, world.gapStartX);
+  else if (cameraRightClamp === "newPlatformEnd")
+    clampRight = Math.min(clampRight, world.newPlatformEnd);
+  const maxCamX = Math.max(worldStartX, clampRight - viewWidth);
   let camX = Math.min(Math.max(desiredX, minCamXSpawn), maxCamX);
   world.camera.x += (camX - world.camera.x) * 0.15;
   if (Math.abs(camX - world.camera.x) < 0.5) world.camera.x = camX;
