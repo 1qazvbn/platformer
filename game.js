@@ -109,8 +109,7 @@ const dashDistanceTiles = 2;
 const dashDuration = 0.14;
 const dashCooldown = 0.35;
 const airDashCount = 1;
-const TELEPORT_TARGET_X = 20;
-const TELEPORT_TARGET_Y = 0;
+const LEVEL_START_PX = { x: 20, y: 0 }; // world space
 
 // Dash VFX/SFX parameters
 let vfxEnabled = true;
@@ -1001,24 +1000,22 @@ function generateLevel(seed, layers = 4) {
 }
 
 function resetPlayerToGround() {
-  const p = world.player;
-  if (!p) return;
-  const ground = world.platforms[0];
-  p.x = 0;
-  p.y = ground.y - p.h;
-  p.vx = 0;
-  p.vy = 0;
-  p.onGround = false;
-  world.spawnCenterX = p.x + p.w / 2;
-  computeWorldBounds();
-  rebuildGrid();
+  teleportPlayerToTarget(false);
 }
 
-function teleportPlayerToTarget() {
+function placePlayerAtLevelStart(p) {
+  p.x = LEVEL_START_PX.x - p.w / 2;
+  p.y = LEVEL_START_PX.y - p.h;
+  for (let i = 0; i < 2; i++) {
+    if (world.platforms.some((pl) => rectIntersect(p, pl))) p.y -= 1;
+    else break;
+  }
+}
+
+function teleportPlayerToTarget(freeze = true) {
   const p = world.player;
   if (!p) return;
-  p.x = TELEPORT_TARGET_X - p.w / 2;
-  p.y = TELEPORT_TARGET_Y - p.h;
+  placePlayerAtLevelStart(p);
   p.vx = 0;
   p.vy = 0;
   p.onGround = false;
@@ -1032,9 +1029,58 @@ function teleportPlayerToTarget() {
   p.dashProgress = 0;
   p.dashCooldown = 0;
   p.airDash = airDashCount;
-  world.spawnCenterX = TELEPORT_TARGET_X;
+  if (freeze) p.ghostFrames = 1;
+  world.spawnCenterX = LEVEL_START_PX.x;
   computeWorldBounds();
+  snapCameraToPlayer();
   rebuildGrid();
+  resetInput(true);
+  if (DEBUG)
+    console.log("tp feet", p.x + p.w / 2, p.y + p.h);
+}
+
+function snapCameraToPlayer() {
+  const p = world.player;
+  if (!p) return;
+  const targetX = p.x + p.w / 2;
+  const desiredX = targetX - viewWidth / 2;
+  const minCamXSpawn = Math.max(
+    worldStartX,
+    world.spawnCenterX - viewWidth / 2,
+  );
+  let clampRight = worldEndX;
+  if (cameraRightClamp === "gapStart")
+    clampRight = Math.min(clampRight, world.gapStartX);
+  else if (cameraRightClamp === "newPlatformEnd")
+    clampRight = Math.min(clampRight, world.newPlatformEnd);
+  else if (cameraRightClamp === "secondMainEnd")
+    clampRight = Math.min(clampRight, world.secondMainRightX);
+  const maxCamX = Math.max(worldStartX, clampRight - viewWidth);
+  world.camera.x = Math.min(Math.max(desiredX, minCamXSpawn), maxCamX);
+
+  const offsetY = settings.framingTiles * tileSize;
+  const playerY = p.y + p.h / 2;
+  let camY = playerY - (viewHeight / 2 - offsetY);
+  const minCamY = worldMinY;
+  const maxCamY = Math.max(worldMinY, worldMaxY - viewHeight);
+  let clampY = "none";
+  if (camY < minCamY) {
+    camY = minCamY;
+    clampY = "top";
+  } else if (camY > maxCamY && playerY <= worldMaxY) {
+    camY = maxCamY;
+    clampY = "bottom";
+  }
+  world.camera.y = camY;
+  const anchorWorldY = camY + (viewHeight / 2 - offsetY);
+  world.camera.framingYTiles = settings.framingTiles;
+  world.camera.clampY = clampY;
+  world.camera.anchorY = anchorWorldY;
+  world.camera.dzUp = settings.camera.deadzoneUpTiles * tileSize;
+  world.camera.dzDown = settings.camera.deadzoneDownTiles * tileSize;
+  world.camera.targetY = playerY;
+  world.camera.desiredY = camY;
+  world.camera.appliedOffsetY = 0;
 }
 
 function lowerCoinPlatforms() {
@@ -1348,13 +1394,13 @@ function init() {
     }),
   );
 
-  world.spawnCenterX = TELEPORT_TARGET_X;
+  world.spawnCenterX = LEVEL_START_PX.x;
   measureReachability();
   levelSeed = Date.now();
   generateLevel(levelSeed, 4);
   world.player = {
-    x: TELEPORT_TARGET_X - 20,
-    y: TELEPORT_TARGET_Y - 40,
+    x: LEVEL_START_PX.x - 20,
+    y: LEVEL_START_PX.y - 40,
     w: 40,
     h: 40,
     vx: 0,
@@ -1390,8 +1436,9 @@ function init() {
     dashProgress: 0,
     dashCooldown: 0,
     airDash: airDashCount,
+    ghostFrames: 0,
   };
-  teleportPlayerToTarget();
+  teleportPlayerToTarget(false);
   debugControls = document.getElementById("debug-controls");
   setDebug(DEBUG);
   gridBtn = document.getElementById("btn-grid");
@@ -1512,6 +1559,9 @@ function update(dt) {
   pollGamepad();
   leftHeld = keyLeft || gpLeft;
   rightHeld = keyRight || gpRight;
+  if (p.ghostFrames > 0) {
+    leftHeld = rightHeld = upHeld = false;
+  }
   p.breathe += dt * 2;
 
   if (p.yawning && (!p.onGround || leftHeld || rightHeld || upHeld)) {
@@ -1785,6 +1835,12 @@ function dashMove(p, dx) {
 }
 
 function moveAndCollide(p, dt) {
+  if (p.ghostFrames > 0) {
+    p.x += p.vx * dt * 10;
+    p.y += p.vy * dt * 10;
+    p.ghostFrames--;
+    return;
+  }
   p.x += p.vx * dt * 10;
   for (const pl of world.platforms) {
     if (rectIntersect(p, pl)) {
@@ -2293,8 +2349,8 @@ function drawTeleport(tp) {
 function drawTeleportDebugMarker() {
   if (!DEBUG) return;
   const size = 4;
-  const x = TELEPORT_TARGET_X;
-  const y = TELEPORT_TARGET_Y;
+  const x = LEVEL_START_PX.x;
+  const y = LEVEL_START_PX.y;
   ctx.strokeStyle = "#f00";
   ctx.beginPath();
   ctx.moveTo(x - size, y - size);
