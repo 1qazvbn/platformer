@@ -13,7 +13,7 @@ const PLATFORM_HEIGHT = 20;
 
 const CLAMP_PLAYER_TO_CAMERA_X = true;
 
-const PARALLAX_ENABLED = true;
+let parallaxEnabled = true;
 const parallax = { segments: {}, clouds: [] };
 
 let canvas, ctx;
@@ -49,6 +49,9 @@ let gridStep = parseInt(localStorage.getItem(GRID_STEP_KEY), 10);
 if (gridStep !== 5) gridStep = 1;
 let gridBtn = null;
 let stepBtn = null;
+let parallaxBtn = null;
+let vfxBtn = null;
+let shakeBtn = null;
 let deadZoneDebug = false;
 let debugControls = null;
 
@@ -60,6 +63,8 @@ function setDebug(value) {
 window.addEventListener("keydown", (e) => {
   if (e.key === "F3") {
     setDebug(!DEBUG);
+  } else if (e.key === "F4") {
+    downloadSpikes();
   }
 });
 
@@ -112,6 +117,7 @@ let speedLinesLifetime = 0.12;
 let dustEnabled = true;
 let cameraShakeAmpTiles = 0.03;
 let cameraShakeDur = 0.1;
+let cameraShakeOn = true;
 let leadKickTiles = 0.25;
 let sfxDash = "dash_swoosh";
 
@@ -159,6 +165,16 @@ let cameraShakeActive = 0;
 let cameraShakeFreq = 30;
 let cameraShakeAmp = 0;
 let audioCtx = null;
+
+const perf = {
+  frameTimes: [],
+  frameMs: 0,
+  updateMs: 0,
+  renderMs: 0,
+  counts: { entities: 0, sprites: 0, particles: 0, collisions: 0 },
+};
+const spikeLog = [];
+let collisionChecks = 0;
 
 let currentDifficulty = localStorage.getItem(DIFF_KEY) || "Easy";
 if (!DIFF_FACTORS[currentDifficulty]) currentDifficulty = "Easy";
@@ -399,6 +415,7 @@ function endCameraKick() {
 }
 
 function startCameraShake() {
+  if (!cameraShakeOn) return;
   cameraShakeT = 0;
   cameraShakeActive = cameraShakeDur;
   cameraShakeFreq = 30 + Math.random() * 10;
@@ -439,7 +456,8 @@ function updateVfx(dt) {
     } else cameraKickX *= 1 - t;
   }
   // camera shake timer
-  if (cameraShakeT < cameraShakeActive) cameraShakeT += dt;
+  if (cameraShakeOn && cameraShakeT < cameraShakeActive) cameraShakeT += dt;
+  else if (!cameraShakeOn) cameraShakeT = cameraShakeActive = 0;
 }
 
 function clearVfx() {
@@ -457,6 +475,8 @@ function drawVfx() {
   // trails
   for (const t of dashTrails) {
     if (!t.active) continue;
+    perf.counts.sprites++;
+    perf.counts.particles++;
     const alpha = Math.exp(-t.age / trailLifetime);
     ctx.globalAlpha = alpha;
     ctx.save();
@@ -470,6 +490,8 @@ function drawVfx() {
   // speed lines
   for (const s of speedLines) {
     if (!s.active) continue;
+    perf.counts.sprites++;
+    perf.counts.particles++;
     const alpha = 1 - s.age / s.life;
     ctx.globalAlpha = alpha;
     ctx.fillStyle = "#bbf9ff";
@@ -480,6 +502,8 @@ function drawVfx() {
   // dust
   for (const d of dashDust) {
     if (!d.active) continue;
+    perf.counts.sprites++;
+    perf.counts.particles++;
     const alpha = 1 - d.age / d.life;
     ctx.globalAlpha = alpha;
     ctx.fillStyle = "#aaa";
@@ -1323,6 +1347,9 @@ function init() {
   setDebug(DEBUG);
   gridBtn = document.getElementById("btn-grid");
   stepBtn = document.getElementById("btn-step");
+  parallaxBtn = document.getElementById("btn-parallax");
+  vfxBtn = document.getElementById("btn-vfx");
+  shakeBtn = document.getElementById("btn-shake");
   const bindBtn = (el, handler) => {
     ["click", "touchstart"].forEach((ev) => {
       el.addEventListener(
@@ -1338,12 +1365,21 @@ function init() {
   };
   bindBtn(gridBtn, toggleGrid);
   bindBtn(stepBtn, toggleGridStep);
+  bindBtn(parallaxBtn, toggleParallax);
+  bindBtn(vfxBtn, toggleVfx);
+  bindBtn(shakeBtn, toggleShake);
   updateGridButtons();
   resetInput();
 }
 
 function loop(t) {
   try {
+    perf.frameStart = performance.now();
+    perf.counts.entities =
+      1 + world.platforms.length + world.coins.length;
+    perf.counts.sprites = 0;
+    perf.counts.particles = 0;
+    collisionChecks = 0;
     const delta = t - last;
     last = t;
     acc += delta / 1000;
@@ -1354,6 +1390,8 @@ function loop(t) {
       fpsTime = t;
       if (fps < 30) safeMode = true;
     }
+    performance.mark("updateStart");
+    const uStart = performance.now();
     let steps = 0;
     while (acc >= dt && steps < 5) {
       update(dt);
@@ -1362,12 +1400,49 @@ function loop(t) {
     }
     if (acc > dt) acc = dt;
     updateCamera(delta / 1000);
+    const uEnd = performance.now();
+    performance.mark("updateEnd");
+    perf.updateStart = uStart;
+    perf.updateEnd = uEnd;
+    perf.updateMs = uEnd - uStart;
+    perf.counts.collisions = collisionChecks;
+    perf.counts.entities =
+      1 + world.platforms.length + world.coins.length;
     if (CLAMP_PLAYER_TO_CAMERA_X) {
       world.camera.clampX = clampPlayerToCameraX();
     } else {
       world.camera.clampX = "none";
     }
+    performance.mark("renderStart");
+    perf.renderStart = performance.now();
     render();
+    perf.renderEnd = performance.now();
+    performance.mark("renderEnd");
+    perf.renderMs = perf.renderEnd - perf.renderStart;
+    perf.frameEnd = perf.renderEnd;
+    perf.frameMs = perf.frameEnd - perf.frameStart;
+    performance.mark("frameEnd");
+    perf.frameTimes.push(perf.frameMs);
+    if (perf.frameTimes.length > 600) perf.frameTimes.shift();
+    if (perf.frameMs > 20) {
+      const snap = {
+        frameMs: perf.frameMs,
+        updateMs: perf.updateMs,
+        renderMs: perf.renderMs,
+        heapUsed: performance.memory
+          ? performance.memory.usedJSHeapSize
+          : null,
+        counts: { ...perf.counts },
+        flags: {
+          gridOn: gridEnabled,
+          parallaxOn: parallaxEnabled,
+          vfxOn: vfxEnabled,
+          cameraShakeOn,
+        },
+      };
+      spikeLog.push(snap);
+      if (spikeLog.length > 50) spikeLog.shift();
+    }
     if (!isReady) {
       isReady = true;
       if (loader) loader.style.display = "none";
@@ -1799,6 +1874,7 @@ function clampPlayerToCameraX() {
 }
 
 function rectIntersect(a, b) {
+  collisionChecks++;
   return (
     a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
   );
@@ -1810,7 +1886,7 @@ function render() {
   let camY = snap(world.camera.y);
   let shakeX = 0,
     shakeY = 0;
-  if (cameraShakeT < cameraShakeActive) {
+  if (cameraShakeOn && cameraShakeT < cameraShakeActive) {
     const prog = cameraShakeT / cameraShakeActive;
     const amp = cameraShakeAmp * (1 - prog);
     const t = cameraShakeT * cameraShakeFreq * Math.PI * 2;
@@ -1856,7 +1932,7 @@ function render() {
 }
 
 function buildParallaxLayers() {
-  if (!PARALLAX_ENABLED) return;
+  if (!parallaxEnabled) return;
   const ground = world.platforms[0];
   const groundY = ground ? ground.y : viewHeight;
   const hillsFarY = groundY - tileSize * 3.7;
@@ -1967,7 +2043,7 @@ function buildParallaxLayers() {
 }
 
 function drawParallax(camX, camY) {
-  if (!PARALLAX_ENABLED || !parallax.segments.hillsFar) {
+  if (!parallaxEnabled || !parallax.segments.hillsFar) {
     const bgOffset = snap(camX * 0.2);
     drawBackground(bgOffset);
     return;
@@ -1998,6 +2074,7 @@ function drawParallax(camX, camY) {
     const y = s.baseY - camY * s.py;
     while (x < w) {
       ctx.drawImage(s.canvas, Math.round(x), Math.round(y));
+      perf.counts.sprites++;
       x += s.width;
     }
   };
@@ -2011,6 +2088,7 @@ function drawParallax(camX, camY) {
     c.x += c.speed * dt;
     const sx = c.x - camX * 0.15;
     const sy = c.y + Math.sin(gameTime * 0.5 + c.phase) * 5 - camY * 0.1;
+    perf.counts.sprites++;
     ctx.save();
     ctx.translate(sx, sy);
     ctx.fillStyle = "#fff";
@@ -2108,6 +2186,7 @@ function renderGrid(ctx, camX, camY) {
 }
 
 function drawPlatform(pl) {
+  perf.counts.sprites++;
   ctx.save();
   ctx.translate(pl.x, pl.y);
   const tileH = PLATFORM_HEIGHT;
@@ -2146,6 +2225,7 @@ function drawPlatforms() {
 
 function drawCoin(c) {
   if (c.collected) return;
+  perf.counts.sprites++;
   ctx.save();
   ctx.translate(c.x, c.y);
   const scale = 1 + Math.sin(c.t * 4) * 0.1;
@@ -2185,6 +2265,7 @@ function drawCoins() {
 
 function drawPlayer() {
   const p = world.player;
+  perf.counts.sprites++;
   const groundY = getGroundY(p);
   const shadowScale = Math.max(0.2, Math.min(1, (groundY - (p.y + p.h)) / 100));
   ctx.save();
@@ -2280,6 +2361,35 @@ function drawHUD() {
   ctx.font = "14px monospace";
   ctx.textBaseline = "top";
 
+  let y = 20;
+  const times = perf.frameTimes.slice().sort((a, b) => a - b);
+  const avg = times.reduce((a, b) => a + b, 0) / (times.length || 1);
+  const p99 = times[Math.floor(times.length * 0.99)] || 0;
+  const p999 = times[Math.floor(times.length * 0.999)] || 0;
+  const fpsAvg = avg ? 1000 / avg : 0;
+  const fps1 = p99 ? 1000 / p99 : 0;
+  const fps01 = p999 ? 1000 / p999 : 0;
+  const fpsLine = `FPS ${fpsAvg.toFixed(1)} / ${fps1.toFixed(1)} / ${fps01.toFixed(1)}`;
+  ctx.strokeText(fpsLine, 20, y);
+  ctx.fillText(fpsLine, 20, y);
+  y += 20;
+  const frameLine =
+    `frame ${perf.frameMs.toFixed(1)} ms, update ${perf.updateMs.toFixed(1)} ms, render ${perf.renderMs.toFixed(1)} ms`;
+  ctx.strokeText(frameLine, 20, y);
+  ctx.fillText(frameLine, 20, y);
+  y += 20;
+  if (performance.memory) {
+    const heapLine = `heapUsed ${(performance.memory.usedJSHeapSize / 1048576).toFixed(1)} MB`;
+    ctx.strokeText(heapLine, 20, y);
+    ctx.fillText(heapLine, 20, y);
+    y += 20;
+  }
+  const countLine =
+    `counts e:${perf.counts.entities} s:${perf.counts.sprites} vfx:${perf.counts.particles} coll:${perf.counts.collisions}`;
+  ctx.strokeText(countLine, 20, y);
+  ctx.fillText(countLine, 20, y);
+  y += 20;
+
   const tiles = world.camera.framingYTiles || 0;
   const offPix = Math.round(world.camera.appliedOffsetY || 0);
   const clamp = world.camera.clampY || "none";
@@ -2298,24 +2408,28 @@ function drawHUD() {
         ? "right"
         : "none";
   const line = `Framing: tiles=${tiles} | offY=${offPix} | clampY=${clamp} | CamY=${camY} | CamX=${camCenterX} (t=${camCenterTX}) | clampX=${clampX} | clampX=${world.camera.clampX || "none"}`;
-  ctx.strokeText(line, 20, 20);
-  ctx.fillText(line, 20, 20);
+  ctx.strokeText(line, 20, y);
+  ctx.fillText(line, 20, y);
+  y += 20;
 
   const camLine = `C x=${camCenterX} px (t=${camCenterTX})`;
   const player = world.player;
   const playerLine = `P x=${Math.round(player.x)} px (t=${(player.x / tileSize).toFixed(1)})`;
-  ctx.strokeText(camLine, 20, 40);
-  ctx.fillText(camLine, 20, 40);
-  ctx.strokeText(playerLine, 20, 60);
-  ctx.fillText(playerLine, 20, 60);
+  ctx.strokeText(camLine, 20, y);
+  ctx.fillText(camLine, 20, y);
+  y += 20;
+  ctx.strokeText(playerLine, 20, y);
+  ctx.fillText(playerLine, 20, y);
+  y += 20;
 
   const viewLine = `View: ${viewWidth}×${viewHeight}`;
-  ctx.strokeText(viewLine, 20, 80);
-  ctx.fillText(viewLine, 20, 80);
+  ctx.strokeText(viewLine, 20, y);
+  ctx.fillText(viewLine, 20, y);
+  y += 20;
 
   const genLine = `Gen: layers=${lastGen.layers} stepX=${Math.round(lastGen.stepX)} stepY=${Math.round(lastGen.stepY)} seed=${lastGen.seed}`;
-  ctx.strokeText(genLine, 20, 100);
-  ctx.fillText(genLine, 20, 100);
+  ctx.strokeText(genLine, 20, y);
+  ctx.fillText(genLine, 20, y);
 
   const ver = "v" + GAME_VERSION;
   ctx.strokeText(ver, viewWidth - 80, viewHeight - 20);
@@ -2334,6 +2448,12 @@ function updateGridButtons() {
   if (gridBtn) gridBtn.textContent = "Grid: " + (gridEnabled ? "On" : "Off");
   if (stepBtn)
     stepBtn.textContent = "Step: " + (gridStep === 5 ? "5×5" : "1×1");
+  if (parallaxBtn)
+    parallaxBtn.textContent =
+      "Parallax: " + (parallaxEnabled ? "On" : "Off");
+  if (vfxBtn) vfxBtn.textContent = "VFX: " + (vfxEnabled ? "On" : "Off");
+  if (shakeBtn)
+    shakeBtn.textContent = "Shake: " + (cameraShakeOn ? "On" : "Off");
 }
 
 function toggleGrid() {
@@ -2348,6 +2468,35 @@ function toggleGridStep() {
   localStorage.setItem(GRID_STEP_KEY, gridStep);
   updateGridButtons();
   rebuildGrid();
+}
+
+function toggleParallax() {
+  parallaxEnabled = !parallaxEnabled;
+  updateGridButtons();
+  buildParallaxLayers();
+}
+
+function toggleVfx() {
+  vfxEnabled = !vfxEnabled;
+  updateGridButtons();
+}
+
+function toggleShake() {
+  cameraShakeOn = !cameraShakeOn;
+  updateGridButtons();
+}
+
+function downloadSpikes() {
+  if (!spikeLog.length) return;
+  const blob = new Blob([JSON.stringify(spikeLog, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "perf_spikes.json";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function setupMenu() {
