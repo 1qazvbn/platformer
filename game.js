@@ -75,6 +75,39 @@ const dashDuration = 0.14;
 const dashCooldown = 0.35;
 const airDashCount = 1;
 
+// Dash VFX/SFX parameters
+let vfxEnabled = true;
+let trailInterval = 0.03;
+let trailLifetime = 0.18;
+let trailPoolSize = 12;
+let speedLinesLifetime = 0.12;
+let dustEnabled = true;
+let cameraShakeAmpTiles = 0.03;
+let cameraShakeDur = 0.10;
+let leadKickTiles = 0.25;
+let sfxDash = 'dash_swoosh';
+
+// Dash events
+const OnDashStart = [];
+const OnDashUpdate = [];
+const OnDashEnd = [];
+
+// VFX pools and state
+const dashTrails = [];
+const speedLines = [];
+const dashDust = [];
+for(let i=0;i<trailPoolSize;i++) dashTrails.push({active:false,x:0,y:0,w:0,h:0,dir:1,scaleX:1,scaleY:1,eye:1,mouth:0,age:0});
+for(let i=0;i<20;i++) speedLines.push({active:false,x:0,y:0,dir:1,len:20,age:0,life:0,vx:0});
+for(let i=0;i<40;i++) dashDust.push({active:false,x:0,y:0,vx:0,vy:0,age:0,life:0});
+let trailTimer = 0;
+let cameraKickX = 0;
+let cameraKickReturn = 0;
+let cameraShakeT = 0;
+let cameraShakeActive = 0;
+let cameraShakeFreq = 30;
+let cameraShakeAmp = 0;
+let audioCtx = null;
+
 let currentDifficulty = localStorage.getItem(DIFF_KEY) || 'Easy';
 if(!DIFF_FACTORS[currentDifficulty]) currentDifficulty = 'Easy';
 
@@ -200,6 +233,200 @@ function startAirReleaseCut(){
   p.releaseTimer = 0;
 }
 
+// VFX helpers
+function spawnTrail(p){
+  const t = dashTrails.find(tr=>!tr.active);
+  if(!t) return;
+  t.active = true;
+  t.x = p.x;
+  t.y = p.y;
+  t.w = p.w;
+  t.h = p.h;
+  t.dir = p.dir;
+  t.scaleX = p.scaleX || 1;
+  t.scaleY = p.scaleY || 1;
+  t.eye = p.eye;
+  t.mouth = p.mouth;
+  t.age = 0;
+}
+
+function spawnSpeedLine(p){
+  const s = speedLines.find(sl=>!sl.active);
+  if(!s) return;
+  s.active = true;
+  s.dir = p.dashDir;
+  s.x = p.x + p.w/2 + (Math.random()-0.5)*p.w;
+  s.y = p.y + p.h/2 + (Math.random()*0.4-0.2)*tileSize;
+  s.len = 20 + Math.random()*10;
+  s.age = 0;
+  s.life = speedLinesLifetime + (Math.random()*0.04-0.02);
+  s.vx = -p.dashDir * 120;
+}
+
+function spawnDust(p){
+  const count = 6 + Math.floor(Math.random()*4);
+  for(let i=0;i<count;i++){
+    const d = dashDust.find(dd=>!dd.active);
+    if(!d) break;
+    d.active = true;
+    d.x = p.x + p.w/2 + (Math.random()-0.5)*p.w;
+    d.y = p.y + p.h;
+    d.vx = (Math.random()*120-60);
+    d.vy = - (60 + Math.random()*60);
+    d.age = 0;
+    d.life = 0.20 + Math.random()*0.10;
+  }
+}
+
+function playDashSfx(){
+  if(!vfxEnabled) return;
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    const pitch = 1 + (Math.random()*0.10 - 0.05);
+    osc.frequency.value = 800 * pitch;
+    gain.gain.value = 0.8;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.2);
+    osc.start();
+    osc.stop(audioCtx.currentTime+0.2);
+  }catch(e){
+    // ignore audio errors
+  }
+}
+
+function startCameraKick(dir){
+  cameraKickX = leadKickTiles * tileSize * dir;
+  cameraKickReturn = 0;
+}
+
+function endCameraKick(){
+  cameraKickReturn = 0.0001;
+}
+
+function startCameraShake(){
+  cameraShakeT = 0;
+  cameraShakeActive = cameraShakeDur;
+  cameraShakeFreq = 30 + Math.random()*10;
+  cameraShakeAmp = cameraShakeAmpTiles * tileSize;
+}
+
+function updateVfx(dt){
+  if(!vfxEnabled) return;
+  // trails
+  for(const t of dashTrails){
+    if(!t.active) continue;
+    t.age += dt;
+    if(t.age >= trailLifetime) t.active=false;
+  }
+  // speed lines
+  for(const s of speedLines){
+    if(!s.active) continue;
+    s.age += dt;
+    s.x += s.vx * dt;
+    if(s.age >= s.life) s.active=false;
+  }
+  // dust
+  for(const d of dashDust){
+    if(!d.active) continue;
+    d.age += dt;
+    d.x += d.vx * dt;
+    d.y += d.vy * dt;
+    d.vy += GRAVITY * tileSize * dt;
+    if(d.age >= d.life) d.active=false;
+  }
+  // camera kick return
+  if(cameraKickReturn>0){
+    cameraKickReturn += dt;
+    const t = cameraKickReturn / 0.12;
+    if(t>=1){ cameraKickX=0; cameraKickReturn=0; }
+    else cameraKickX *= (1 - t);
+  }
+  // camera shake timer
+  if(cameraShakeT < cameraShakeActive) cameraShakeT += dt;
+}
+
+function clearVfx(){
+  dashTrails.forEach(t=>t.active=false);
+  speedLines.forEach(s=>s.active=false);
+  dashDust.forEach(d=>d.active=false);
+  cameraKickX = 0;
+  cameraKickReturn = 0;
+  cameraShakeT = cameraShakeActive = 0;
+}
+
+function drawVfx(){
+  if(!vfxEnabled) return;
+  ctx.save();
+  // trails
+  for(const t of dashTrails){
+    if(!t.active) continue;
+    const alpha = Math.exp(-t.age/trailLifetime);
+    ctx.globalAlpha = alpha;
+    ctx.save();
+    ctx.translate(t.x + t.w/2 - t.dir*tileSize*0.05, t.y + t.h/2);
+    ctx.scale(t.scaleX, t.scaleY);
+    ctx.fillStyle = '#bbf9ff';
+    ctx.fillRect(-t.w/2, -t.h/2, t.w, t.h);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  // speed lines
+  for(const s of speedLines){
+    if(!s.active) continue;
+    const alpha = 1 - s.age/s.life;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#bbf9ff';
+    const h = 2;
+    ctx.fillRect(s.x - s.dir*s.len, s.y - h/2, s.len, h);
+  }
+  ctx.globalAlpha = 1;
+  // dust
+  for(const d of dashDust){
+    if(!d.active) continue;
+    const alpha = 1 - d.age/d.life;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#aaa';
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, 3, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Hook VFX to dash events
+OnDashStart.push(p=>{
+  trailTimer = 0;
+  if(vfxEnabled){
+    spawnTrail(p);
+    startCameraKick(p.dashDir);
+    startCameraShake();
+    if(dustEnabled && p.onGround) spawnDust(p);
+    spawnSpeedLine(p);
+    playDashSfx();
+  }
+});
+
+OnDashUpdate.push((p,dt)=>{
+  if(!vfxEnabled) return;
+  trailTimer += dt;
+  if(trailTimer >= trailInterval){
+    trailTimer -= trailInterval;
+    spawnTrail(p);
+  }
+  spawnSpeedLine(p);
+});
+
+OnDashEnd.push(p=>{
+  if(!vfxEnabled) return;
+  endCameraKick();
+  if(dustEnabled && p.onGround) spawnDust(p);
+});
+
 function startDash(){
   const p = world.player;
   if(!p || p.dashing) return;
@@ -217,6 +444,7 @@ function startDash(){
   p.dashProgress = 0;
   p.vx = 0;
   p.vy = 0;
+  OnDashStart.forEach(fn=>fn(p));
 }
 
 function pollGamepad(){
@@ -900,6 +1128,7 @@ function update(dt){
 
   if(p.dashCooldown>0){ p.dashCooldown-=dt; if(p.dashCooldown<0) p.dashCooldown=0; }
   if(p.dashing){
+    OnDashUpdate.forEach(fn=>fn(p,dt));
     const speed = (dashDistanceTiles*tileSize)/dashDuration;
     const moved = dashMove(p, p.dashDir * speed * dt);
     p.dashProgress += Math.abs(moved);
@@ -910,7 +1139,9 @@ function update(dt){
       p.vy = 0;
       if(p.onGround) p.airDash = airDashCount;
       p.dashCooldown = dashCooldown;
+      OnDashEnd.forEach(fn=>fn(p));
     }
+    updateVfx(dt);
     return;
   }
 
@@ -977,6 +1208,7 @@ function update(dt){
     segment.done = true;
     segment.delta = gameTime - segment.startTime;
   }
+  updateVfx(dt);
 }
 
 function startYawn(p){
@@ -1192,8 +1424,18 @@ function rectIntersect(a,b){
 
 function render(){
   if(syncCanvas()) rebuildGrid();
-  const camX = snap(world.camera.x);
-  const camY = snap(world.camera.y);
+  let camX = snap(world.camera.x);
+  let camY = snap(world.camera.y);
+  let shakeX = 0, shakeY = 0;
+  if(cameraShakeT < cameraShakeActive){
+    const prog = cameraShakeT / cameraShakeActive;
+    const amp = cameraShakeAmp * (1 - prog);
+    const t = cameraShakeT * cameraShakeFreq * Math.PI*2;
+    shakeX = Math.sin(t) * amp;
+    shakeY = Math.cos(t*1.3) * amp;
+  }
+  camX += cameraKickX + shakeX;
+  camY += shakeY;
   const sd = canvasScale * dpr;
   ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -1204,6 +1446,7 @@ function render(){
   drawPlatforms();
   drawCoins();
   drawPlayer();
+  if(paused) clearVfx(); else drawVfx();
   ctx.setTransform(sd,0,0,sd,offsetX*dpr,offsetY*dpr);
   if(deadZoneDebug){
     const offsetY = settings.framingTiles * tileSize;
