@@ -4,9 +4,9 @@ const CACHE = 'platformer-' + self.GAME_VERSION;
 const ASSETS = [
   './',
   './index.html',
-  './styles.css?v=' + self.GAME_VERSION,
-  './game.js?v=' + self.GAME_VERSION,
-  './version.js'
+  './version.js',
+  './levels/level1/styles.css?v=' + self.GAME_VERSION,
+  './levels/level1/game.js?v=' + self.GAME_VERSION
 ];
 
 self.addEventListener('install', event => {

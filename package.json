@@ -3,7 +3,7 @@
   "version": "0.1.66",
   "scripts": {
     "lint:js": "eslint .",
-    "lint:css": "stylelint styles.css",
+    "lint:css": "stylelint \"levels/**/*.css\"",
     "lint": "npm run lint:js && npm run lint:css",
     "test": "npm run lint"
   },
