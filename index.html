@@ -144,6 +144,8 @@
           window.bootLevel = (level) => {
             startWatchdog();
             setupPause();
+            const loader = document.getElementById("loading-screen");
+            if (loader) loader.style.display = "flex";
             const levelPath = `levels/level${level}`;
             link.href = addVersion(`${levelPath}/styles.css`);
             loadScript(addVersion(`${levelPath}/game.js`))

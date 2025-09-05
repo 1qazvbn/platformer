@@ -3,6 +3,9 @@
   const starfield = initStarfield(canvas);
   starfield.start();
 
+  const loader = document.getElementById('loading-screen');
+  if (loader) loader.style.display = 'none';
+
   const menu = document.createElement('div');
   menu.id = 'main-menu';
   menu.innerHTML = `
