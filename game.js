@@ -463,7 +463,7 @@ function generateLevel(seed, layers=4){
   const rightBound = anchorX + PLATFORM_GEN.mainForwardTiles * tile;
   const ground = {x:leftBound, y:baseGroundY, w:rightBound - leftBound, h, level:0};
   world.platforms.push(ground);
-  world.coins.push({x:anchorX + w/2, y:ground.y - tile/3, t:0, collected:false});
+  world.coins.push({x:anchorX + w - tile/2, y:ground.y - tile/3, t:0, collected:false});
 
   const mainYTile = Math.round(baseGroundY / tile);
   const bandBottom = mainYTile + PLATFORM_GEN.bandBottomOffset;
@@ -516,7 +516,7 @@ function generateLevel(seed, layers=4){
       if(!headClearPrev) { placed = false; break; }
       if(!hasHeadClearance(pl.x, pl.y, pl.w)) continue;
       world.platforms.push(pl);
-      world.coins.push({x:pl.x + pl.w/2, y:pl.y - tile/3, t:0, collected:false});
+      world.coins.push({x:pl.x + pl.w - tile/2, y:pl.y - tile/3, t:0, collected:false});
       prev = {x:pl.x, yTile:newY, w:pl.w};
       currY = newY;
       placed = true;
