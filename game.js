@@ -1,5 +1,6 @@
 const GAME_VERSION = self.GAME_VERSION;
-const DEBUG = false;
+const params = new URLSearchParams(location.search);
+let DEBUG = params.get("debug") === "1";
 if (self.BOOT) self.BOOT.script = true;
 
 function asArray(v) {
@@ -49,6 +50,18 @@ if (gridStep !== 5) gridStep = 1;
 let gridBtn = null;
 let stepBtn = null;
 let deadZoneDebug = false;
+let debugControls = null;
+
+function setDebug(value) {
+  DEBUG = value;
+  if (debugControls) debugControls.style.display = DEBUG ? "flex" : "none";
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "F3") {
+    setDebug(!DEBUG);
+  }
+});
 
 const DIFF_KEY = "platformer.difficulty.v1";
 const FRAMING_KEY = "platformer.camera.framingTiles";
@@ -1305,8 +1318,8 @@ function init() {
     airDash: airDashCount,
   };
   resetPlayerToGround();
-  const debugControls = document.getElementById("debug-controls");
-  if (debugControls) debugControls.style.display = DEBUG ? "flex" : "none";
+  debugControls = document.getElementById("debug-controls");
+  setDebug(DEBUG);
   gridBtn = document.getElementById("btn-grid");
   stepBtn = document.getElementById("btn-step");
   const bindBtn = (el, handler) => {
