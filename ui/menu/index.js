@@ -72,7 +72,7 @@
   function startLevel(level) {
     active = false;
     document.removeEventListener('keydown', onKeyDown);
-    starfield.stop();
+    starfield.dispose();
     menu.remove();
     bootLevel(level);
   }

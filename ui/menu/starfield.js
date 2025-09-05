@@ -71,12 +71,18 @@
     }
 
     window.addEventListener('resize', resize);
-    document.addEventListener('visibilitychange', () => {
+    const onVis = () => {
       if (document.hidden) stop();
       else start();
-    });
+    };
+    document.addEventListener('visibilitychange', onVis);
     resize();
-    return { start, stop, resize };
+    function dispose() {
+      stop();
+      window.removeEventListener('resize', resize);
+      document.removeEventListener('visibilitychange', onVis);
+    }
+    return { start, stop, resize, dispose };
   }
   global.initStarfield = initStarfield;
 })(self);
