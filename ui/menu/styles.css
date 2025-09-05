@@ -25,6 +25,20 @@ html, body {
   flex-direction: column;
   gap: 12px;
 }
+.menu-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+.menu-screen.hidden {
+  display: none;
+}
+.difficulty-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .menu-btn {
   padding: 12px 24px;
   font-size: 20px;
