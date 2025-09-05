@@ -1,86 +1,222 @@
-<!doctype html><html><head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Platformer</title>
-<style>
-body{margin:0;background:#0e0f14;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
-#loading-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px}
-#game{display:block}
-#error-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);color:#fff;padding:16px;white-space:pre-wrap;overflow:auto;display:none}
-</style>
-<link id="main-style" rel="stylesheet" href="styles.css"/>
-<script src="version.js"></script>
-<script>
-function showError(err){
-  if(self.BOOT && self.BOOT.watchdog) clearTimeout(self.BOOT.watchdog);
-  const l=document.getElementById('loading-screen');
-  if(l) l.style.display='none';
-  const o=document.getElementById('error-overlay');
-  o.textContent=(err&&err.stack)||err;
-  o.style.display='block';
-}
-window.onerror=(msg,src,line,col,err)=>{showError(err||msg);};
-window.onunhandledrejection=e=>{showError(e.reason);};
-(function(){
-  try{
-    if(typeof self.GAME_VERSION==='undefined') throw new Error('version.js failed to load');
-    document.title=`Platformer — v${self.GAME_VERSION}`;
-    const addVersion=u=>self.GAME_VERSION?`${u}?v=${self.GAME_VERSION}`:u;
-    self.BOOT={script:false,init:false,loop:false,frame:false};
-    self.BOOT.watchdog=setTimeout(()=>{
-      if(!self.BOOT.frame){
-        const reason=!self.BOOT.script?'version/import':!self.BOOT.init?'world/input init':!self.BOOT.loop?'loop start':'first frame render';
-        showError('Startup timeout: '+reason);
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Platformer</title>
+    <style>
+      body {
+        margin: 0;
+        background: #0e0f14;
+        color: #eee;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Arial;
       }
-    },2000);
-    const link=document.getElementById('main-style');
-    link.href=addVersion('styles.css');
-    function loadScript(src){
-      return new Promise((res,rej)=>{
-        const s=document.createElement('script');
-        s.src=src;
-        s.onload=res;
-        s.onerror=()=>rej(new Error('Failed to load '+src));
-        document.head.appendChild(s);
-      });
-    }
-    loadScript(addVersion('game.js'))
-      .catch(err=>{
-        console.error(err);
-        return loadScript('game.js');
-      })
-      .then(()=>{ self.BOOT.script=true; })
-      .catch(err=>{ console.error(err); showError(err); });
-    if('serviceWorker' in navigator){
-      const registerSw=src=>navigator.serviceWorker.register(src).then(()=>{
-        navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
-      });
-      registerSw(addVersion('sw.js'))
-        .catch(err=>{ console.error(err); return registerSw('sw.js'); })
-        .catch(err=>{ console.error(err); showError(err); });
-    }
-  }catch(e){showError(e);}
-})();
-</script>
-</head><body>
-<div id="loading-screen">Loading…</div>
-<canvas id="game"></canvas>
-<div id="debug-controls">
-  <button id="btn-grid" class="debug-btn">Grid: Off</button>
-  <button id="btn-step" class="debug-btn">Step: 1×1</button>
-</div>
-<div id="menu">
-  <div id="menu-main" class="menu-screen">
-    <button id="btn-start" class="menu-btn">START</button>
-    <button id="btn-settings" class="menu-btn">SETTINGS</button>
-  </div>
-  <div id="menu-settings" class="menu-screen hidden">
-    <div class="difficulty-options">
-      <label><input type="radio" name="difficulty" value="Easy"> Easy (x1.00)</label>
-      <label><input type="radio" name="difficulty" value="Normal"> Normal (x1.60)</label>
-      <label><input type="radio" name="difficulty" value="Hard"> Hard (x2.20)</label>
+      #loading-screen {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+      }
+      #game {
+        display: block;
+      }
+      #error-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        padding: 16px;
+        white-space: pre-wrap;
+        overflow: auto;
+        display: none;
+      }
+    </style>
+      <link id="main-style" rel="stylesheet" />
+    <script src="version.js"></script>
+    <script>
+      function showError(err) {
+        if (self.BOOT && self.BOOT.watchdog) clearTimeout(self.BOOT.watchdog);
+        const l = document.getElementById("loading-screen");
+        if (l) l.style.display = "none";
+        const o = document.getElementById("error-overlay");
+        o.textContent = (err && err.stack) || err;
+        o.style.display = "block";
+      }
+      window.onerror = (msg, src, line, col, err) => {
+        showError(err || msg);
+      };
+      window.onunhandledrejection = (e) => {
+        showError(e.reason);
+      };
+      const ALLOW_DEV_DEEPLINK = false;
+      (function () {
+        try {
+          if (typeof self.GAME_VERSION === "undefined")
+            throw new Error("version.js failed to load");
+          document.title = `Platformer — v${self.GAME_VERSION}`;
+          const addVersion = (u) =>
+            self.GAME_VERSION ? `${u}?v=${self.GAME_VERSION}` : u;
+          self.BOOT = { script: false, init: false, loop: false, frame: false };
+
+          function startWatchdog() {
+            clearTimeout(self.BOOT.watchdog);
+            self.BOOT.script = false;
+            self.BOOT.init = false;
+            self.BOOT.loop = false;
+            self.BOOT.frame = false;
+            self.BOOT.watchdog = setTimeout(() => {
+              if (!self.BOOT.frame) {
+                const reason = !self.BOOT.script
+                  ? "version/import"
+                  : !self.BOOT.init
+                    ? "world/input init"
+                    : !self.BOOT.loop
+                      ? "loop start"
+                      : "first frame render";
+                showError("Startup timeout: " + reason);
+              }
+            }, 2000);
+          }
+         const link = document.getElementById("main-style");
+          function loadScript(src) {
+            return new Promise((res, rej) => {
+              const s = document.createElement("script");
+              s.src = src;
+              s.onload = res;
+              s.onerror = () => rej(new Error("Failed to load " + src));
+              document.head.appendChild(s);
+            });
+          }
+
+          // remove stored level references
+          for (const store of [localStorage, sessionStorage]) {
+            for (const k of Object.keys(store)) {
+              if (/level/i.test(k)) store.removeItem(k);
+            }
+          }
+
+          // strip level-related params and hashes
+          const url = new URL(location.href);
+          url.searchParams.delete("level");
+          if (!ALLOW_DEV_DEEPLINK) url.searchParams.delete("dev-start");
+          if (/level/i.test(url.hash)) url.hash = "";
+          history.replaceState(null, "", url.pathname + (url.search ? url.search : ""));
+
+          function setupPause() {
+            if (document.getElementById("pause-overlay")) return;
+            const overlay = document.createElement("div");
+            overlay.id = "pause-overlay";
+            Object.assign(overlay.style, {
+              position: "fixed",
+              inset: "0",
+              display: "none",
+              background: "rgba(0,0,0,0.7)",
+              alignItems: "center",
+              justifyContent: "center",
+            });
+            const btn = document.createElement("button");
+            btn.textContent = "В меню";
+            btn.style.fontSize = "20px";
+            btn.addEventListener("click", returnToMenu);
+            overlay.appendChild(btn);
+            document.body.appendChild(overlay);
+            document.addEventListener(
+              "keydown",
+              (e) => {
+                if (e.key === "Escape") {
+                  e.stopImmediatePropagation();
+                  e.preventDefault();
+                  overlay.style.display =
+                    overlay.style.display === "flex" ? "none" : "flex";
+                }
+              },
+              true,
+            );
+          }
+
+          window.bootLevel = (level) => {
+            startWatchdog();
+            setupPause();
+            const loader = document.getElementById("loading-screen");
+            if (loader) loader.style.display = "flex";
+            const levelPath = `levels/level${level}`;
+            link.href = addVersion(`${levelPath}/styles.css`);
+            loadScript(addVersion(`${levelPath}/game.js`))
+              .catch((err) => {
+                console.error(err);
+                return loadScript(`${levelPath}/game.js`);
+              })
+              .then(() => {
+                self.BOOT.script = true;
+              })
+              .catch((err) => {
+                console.error(err);
+                showError(err);
+              });
+          };
+
+          window.returnToMenu = () => {
+            history.replaceState(null, "", location.pathname);
+            location.reload();
+          };
+
+          const params = new URLSearchParams(location.search);
+          const devStart = ALLOW_DEV_DEEPLINK ? params.get("dev-start") : null;
+          if (devStart) {
+            bootLevel(devStart);
+          } else {
+            link.href = addVersion(`ui/menu/styles.css`);
+            loadScript(addVersion(`ui/menu/starfield.js`))
+              .then(() => loadScript(addVersion(`ui/menu/index.js`)))
+              .then(() => {
+                self.BOOT.script = true;
+              })
+              .catch((err) => {
+                console.error(err);
+                showError(err);
+              });
+          }
+          if ("serviceWorker" in navigator) {
+            const registerSw = (src) =>
+              navigator.serviceWorker.register(src).then(() => {
+                navigator.serviceWorker.addEventListener(
+                  "controllerchange",
+                  () => location.reload(),
+                );
+              });
+            registerSw(addVersion("sw.js"))
+              .catch((err) => {
+                console.error(err);
+                return registerSw("sw.js");
+              })
+              .catch((err) => {
+                console.error(err);
+                showError(err);
+              });
+          }
+        } catch (e) {
+          showError(e);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="loading-screen">Loading…</div>
+    <canvas id="game"></canvas>
+    <div id="debug-controls" style="display: none">
+      <button id="btn-grid" class="debug-btn">Grid: Off</button>
+      <button id="btn-step" class="debug-btn">Step: 1×1</button>
+      <button id="btn-parallax" class="debug-btn">Parallax: On</button>
+      <button id="btn-vfx" class="debug-btn">VFX: On</button>
+      <button id="btn-shake" class="debug-btn">Shake: On</button>
     </div>
-    <button id="btn-back" class="menu-btn">BACK</button>
-  </div>
-</div>
-<div id="error-overlay"></div>
-</body></html>
+    <div id="error-overlay"></div>
+  </body>
+</html>
