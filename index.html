@@ -38,7 +38,7 @@
         display: none;
       }
     </style>
-    <link id="main-style" rel="stylesheet" href="styles.css" />
+      <link id="main-style" rel="stylesheet" />
     <script src="version.js"></script>
     <script>
       function showError(err) {
@@ -60,6 +60,9 @@
           if (typeof self.GAME_VERSION === "undefined")
             throw new Error("version.js failed to load");
           document.title = `Platformer — v${self.GAME_VERSION}`;
+          const params = new URLSearchParams(location.search);
+          const level = params.get("level") || "level1";
+          const levelPath = `levels/${level}`;
           const addVersion = (u) =>
             self.GAME_VERSION ? `${u}?v=${self.GAME_VERSION}` : u;
           self.BOOT = { script: false, init: false, loop: false, frame: false };
@@ -76,7 +79,7 @@
             }
           }, 2000);
           const link = document.getElementById("main-style");
-          link.href = addVersion("styles.css");
+          link.href = addVersion(`${levelPath}/styles.css`);
           function loadScript(src) {
             return new Promise((res, rej) => {
               const s = document.createElement("script");
@@ -86,10 +89,10 @@
               document.head.appendChild(s);
             });
           }
-          loadScript(addVersion("game.js"))
+          loadScript(addVersion(`${levelPath}/game.js`))
             .catch((err) => {
               console.error(err);
-              return loadScript("game.js");
+              return loadScript(`${levelPath}/game.js`);
             })
             .then(() => {
               self.BOOT.script = true;
